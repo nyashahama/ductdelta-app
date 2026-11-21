@@ -88,7 +88,6 @@ onMounted(async () => {
   readInvitation(location.hash)
   await restoreSession()
 })
-
 </script>
 
 <template>
