@@ -34,6 +34,10 @@ The list shows up to 50 records, newest server receipt first, with a one-line no
 
 ## Workspace server
 
-Apply the migrations in number order. Build the Nuxt workspace and set `DUCTDELTA_WEB_DIST` to the absolute path of `frontend/.output/public`. Run `ductdelta serve` with a local PostgreSQL login that belongs to `ductdelta_web_runtime`. That role can invoke workspace commands. An administrator issues a sign-in key for an existing actor with `ductdelta issue-key ACTOR_UUID DISPLAY_NAME` and delivers it privately. Rotation invalidates prior sessions for that actor.
+Apply the migrations in number order. Build the Nuxt workspace and set `DUCTDELTA_WEB_DIST` to the absolute path of `frontend/.output/public`. Run `ductdelta serve` with a local PostgreSQL login that belongs to `ductdelta_web_runtime`. That role can invoke workspace commands.
+
+New companies and their members enroll in the browser. Company administrators share one-time invitation links privately. Each browser-enrolled user keeps their recovery key in a separate safe place. Recovery replaces both keys and invalidates earlier sessions.
+
+For an upgraded installation, migration 0008 preserves project membership and creates company membership without assigning admin authority. A deployment operator explicitly designates the first administrator of each pre-existing company in `ductdelta.organization_member` after verifying their authority. The operator can issue a temporary sign-in key for a legacy actor with `ductdelta issue-key ACTOR_UUID DISPLAY_NAME` and deliver it privately.
 
 The server binds to loopback at `127.0.0.1:3000` by default. Configure a loopback `DUCTDELTA_LISTEN` and the exact public HTTPS `DUCTDELTA_ORIGIN` for a TLS reverse proxy. Preserve the configured Host header and apply request time and rate limits at the proxy. The local demo uses HTTP on its exact loopback address only. Run `python3 scripts/check_workspace.py` for the HTTP and database checks.

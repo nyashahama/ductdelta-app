@@ -20,6 +20,7 @@ const name = ref('')
 const pending = ref(false)
 const error = ref('')
 const copied = ref('')
+const openedCompany = ref(false)
 
 const title = computed(() => {
   if (keys.value) return 'Save your sign-in keys'
@@ -52,6 +53,7 @@ async function finish() {
   error.value = ''
   try {
     await refreshSession()
+    if (openedCompany.value) await navigateTo({ path: '/', query: { view: 'company' } }, { replace: true })
     if (keys.value) emit('done')
     else emit('joined')
   } catch {
@@ -97,6 +99,7 @@ async function submit() {
         name: name.value,
         recovery_key: recoveryKey
       }))
+      openedCompany.value = true
     } else {
       keys.value = await api<Keys>('/api/account/recover', requestJson({
         recovery_key: key.value.trim(),

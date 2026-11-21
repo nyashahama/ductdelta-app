@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CompanySettings from '~/components/company/CompanySettings.vue'
 import CasesWorkspace from '~/components/cases/CasesWorkspace.vue'
 import ObservationWorkspace from '~/components/observations/ObservationWorkspace.vue'
 import CaptureObservation from '~/components/observations/CaptureObservation.vue'
@@ -20,7 +21,8 @@ const showNotices = ref(false)
 const title = computed(() => ({
   overview: 'Project overview',
   observations: 'Observations',
-  cases: 'Change cases'
+  cases: 'Change cases',
+  company: 'Company settings'
 })[view.value])
 const selectedCase = computed(() => recordId(route.query.caseId))
 const selectedObservation = computed(() => recordId(route.query.observationId))
@@ -175,8 +177,9 @@ watch([() => project.value?.id, view, period, version], ([id, page], _, onCleanu
     </template>
 
     <template #body>
+      <CompanySettings v-if="view === 'company'" />
       <UAlert
-        v-if="error"
+        v-else-if="error"
         role="alert"
         color="error"
         variant="subtle"
