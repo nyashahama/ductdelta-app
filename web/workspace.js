@@ -56,6 +56,8 @@ function observationPath(scope) {
 function resetDetail() {
   element("detail-body").hidden = true;
   element("detail-tag").hidden = true;
+  element("case-from-observation").hidden = true;
+  delete element("case-from-observation").dataset.observation;
   for (const id of ["note", "location", "observed", "recorded", "actor", "id"]) {
     element("detail-" + id).textContent = "";
   }
@@ -214,6 +216,9 @@ async function openObservation(scope, id) {
     message("detail-actor", record.actor_id);
     message("detail-id", record.id);
     element("detail-tag").hidden = false;
+    const caseLink = element("case-from-observation");
+    caseLink.dataset.observation = record.id;
+    caseLink.hidden = scope.project.permission !== "capture";
     element("detail-body").hidden = false;
   } catch (error) {
     if (active !== scope || scope.detailRequest !== detailRequest) return;
@@ -341,6 +346,12 @@ projectPicker.addEventListener("change", () => {
 element("observations-nav").addEventListener("click", (event) => {
   event.preventDefault();
   element("workspace-content").focus();
+});
+
+document.addEventListener("ductdelta:open-observation", (event) => {
+  if (active && event.detail.projectId === active.project.id) {
+    void openObservation(active, event.detail.observationId);
+  }
 });
 
 retryProjects.addEventListener("click", () => {

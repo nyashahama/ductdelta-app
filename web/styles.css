@@ -233,3 +233,67 @@ fieldset { display: grid; min-width: 0; padding: 0; margin: 0; border: 0; gap: .
   .pane-heading, th, td, .detail-body { padding-inline: .78rem; }
   th:last-child { width: 6.3rem; }
 }
+
+.case-mark { background: linear-gradient(#9fcdf5, #9fcdf5) center / .58rem 1px no-repeat; }
+#case-from-observation { margin-top: .9rem; }
+
+.case-workspace { display: grid; grid-template-columns: minmax(12rem, .82fr) minmax(0, 3fr); gap: 1rem; align-items: start; }
+.case-record, .case-list, .case-list button, .case-cover { min-width: 0; }
+.case-list, .case-timeline ol { list-style: none; padding: 0; margin: 0; }
+.case-list li + li { border-top: 1px solid var(--line); }
+.case-list button { display: flex; justify-content: space-between; align-items: start; gap: .6rem; width: 100%; border: 0; border-left: 3px solid transparent; padding: .8rem .7rem .8rem .8rem; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.case-list button:hover, .case-list button[aria-pressed="true"] { background: #eef5ff; }
+.case-list button[aria-pressed="true"] { border-left-color: var(--blue); }
+.case-list button:focus-visible { outline-offset: -3px; }
+.case-list button span:first-child { font-weight: 650; overflow-wrap: anywhere; }
+.status-closed { background: #e5f3eb; color: #22603d; }
+.case-cover { padding: 1rem 1.15rem; }
+.case-cover-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: .6rem; margin-bottom: .9rem; }
+.case-cover-title h2 { font-size: 1.65rem; line-height: 1.15; overflow-wrap: anywhere; }
+.case-meta { display: flex; flex-wrap: wrap; gap: .55rem 1.3rem; font-size: .84rem; }
+.case-meta dt { color: var(--muted); }
+.case-meta dd { font-weight: 640; overflow-wrap: anywhere; }
+#case-source { margin-top: .85rem; }
+.case-financial { margin-top: .85rem; }
+.case-financial-data { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.case-financial-data > div { padding: .8rem .9rem; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.case-financial-data dt { color: var(--muted); font-size: .8rem; }
+.case-financial-data dd { font-size: 1.14rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.case-financial-data .balance { background: #eef5ff; }
+.case-financial-data .unrecorded { font-weight: 500; font-size: .88rem; color: var(--muted); }
+.case-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: .85rem; margin-top: .85rem; align-items: start; }
+.case-detail-grid h3, .case-financial h3 { font-size: 1rem; }
+.case-detail-grid > :only-child, .case-actions[hidden] + .case-timeline { grid-column: 1 / -1; }
+.case-actions .form { padding: .8rem .9rem .95rem; gap: .65rem; }
+.case-actions .form > button { justify-self: start; }
+.case-actions .form input[type="checkbox"] { width: auto; min-height: 0; margin: 0; }
+.case-checkbox { display: flex; align-items: center; gap: .52rem; }
+.case-fields-text { font-size: .8rem; }
+.case-line { min-width: 0; padding: .65rem; border: 1px solid var(--line); border-radius: 6px; background: var(--light); }
+.case-line legend { font-size: .81rem; font-weight: 650; padding-inline: .25rem; }
+.case-line p { font-size: .84rem; overflow-wrap: anywhere; }
+.case-line .button, .quote-add { justify-self: start; }
+.case-timeline li { position: relative; padding: .77rem .8rem .77rem 1.75rem; }
+.case-timeline li::before { content: ""; position: absolute; top: 1.17rem; left: .82rem; width: .45rem; height: .45rem; border-radius: 50%; background: var(--blue); }
+.case-timeline li + li { border-top: 1px solid var(--line); }
+.case-timeline summary { cursor: pointer; font-weight: 650; font-size: .9rem; overflow-wrap: anywhere; }
+.case-timeline time, .event-actor { display: block; font-size: .77rem; color: var(--muted); overflow-wrap: anywhere; }
+.event-data { display: grid; gap: .45rem; margin-top: .7rem; font-size: .85rem; }
+.event-data dt { color: var(--muted); }
+.event-data dd { white-space: pre-wrap; overflow-wrap: anywhere; }
+.event-lines { margin: .65rem 0; overflow: auto; }
+.event-lines table { min-width: 14rem; }
+.event-lines th, .event-lines td { padding: .42rem; }
+.event-lines th:last-child { width: auto; }
+
+@media (max-width: 76rem) {
+  .case-detail-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 52rem) {
+  .case-workspace { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 31rem) {
+  .case-financial-data { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

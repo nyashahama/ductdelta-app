@@ -7,6 +7,7 @@
   <title>DuctDelta workspace</title>
   <link rel="stylesheet" href="/assets/styles.css">
   <script defer src="/assets/workspace.js"></script>
+  <script defer src="/assets/cases.js"></script>
 </head>
 <body>
   <p id="startup" class="startup" role="status">Opening DuctDelta…</p>
@@ -40,6 +41,7 @@
         <a href="#observations-view" aria-current="page" id="observations-nav">
           <span class="nav-mark" aria-hidden="true"></span> Observations
         </a>
+        <a href="#cases-view" id="cases-nav"><span class="nav-mark case-mark" aria-hidden="true"></span> Change cases</a>
       </nav>
     </aside>
 
@@ -102,10 +104,84 @@
                   <div><dt>Recorded by</dt><dd id="detail-actor"></dd></div>
                   <div><dt>Record ID</dt><dd id="detail-id"></dd></div>
                 </dl>
+                <button id="case-from-observation" class="button secondary" type="button" hidden>Create linked case</button>
               </div>
             </section>
           </div>
           <p id="save-status" class="sr-only" role="status"></p>
+        </section>
+
+        <section id="cases-view" aria-labelledby="cases-title" hidden>
+          <div class="page-heading">
+            <div>
+              <h1 id="cases-title" tabindex="-1">Change cases</h1>
+              <p class="support">Track changes from instruction through payment.</p>
+            </div>
+            <button id="new-case" class="button primary" type="button" hidden>
+              <span class="add-symbol" aria-hidden="true">+</span> New case
+            </button>
+          </div>
+          <p id="case-error" class="error banner" role="alert" hidden></p>
+          <div class="case-workspace">
+            <section class="pane case-queue" aria-labelledby="case-queue-title">
+              <div class="pane-heading">
+                <h2 id="case-queue-title">Case register</h2>
+                <span id="case-count" class="count" hidden></span>
+              </div>
+              <p id="case-list-status" class="support pane-message" role="status"></p>
+              <ul id="case-list" class="case-list"></ul>
+              <div id="case-list-retry-bar" class="pane-footer" hidden>
+                <button id="case-list-retry" class="button secondary" type="button">Reload case register</button>
+              </div>
+            </section>
+
+            <div id="case-record" class="case-record">
+              <p id="case-detail-status" class="pane pane-message support" role="status">Select a case to open its record.</p>
+              <div id="case-detail" hidden>
+                <section class="pane case-cover" aria-labelledby="case-title">
+                  <div class="case-cover-title">
+                    <h2 id="case-title" tabindex="-1"></h2>
+                    <span id="case-status" class="tag"></span>
+                  </div>
+                  <dl class="case-meta">
+                    <div><dt>Agreement</dt><dd id="case-agreement"></dd></div>
+                    <div><dt>Case ID</dt><dd id="case-id"></dd></div>
+                  </dl>
+                  <button id="case-source" class="button secondary" type="button" hidden>Open source observation</button>
+                </section>
+
+                <section id="case-financial" class="pane case-financial" aria-labelledby="case-financial-title" hidden>
+                  <div class="pane-heading">
+                    <h3 id="case-financial-title">Financial position</h3>
+                    <span id="case-currency" class="tag"></span>
+                  </div>
+                  <dl id="case-financial-data" class="case-financial-data"></dl>
+                </section>
+
+                <div class="case-detail-grid">
+                  <section id="case-actions" class="pane case-actions" aria-labelledby="case-actions-title" hidden>
+                    <div class="pane-heading"><h3 id="case-actions-title">Record an action</h3></div>
+                    <form id="case-action-form" class="form">
+                      <div class="field">
+                        <label for="case-action">Action</label>
+                        <select id="case-action" name="kind"></select>
+                      </div>
+                      <fieldset id="case-action-fields"></fieldset>
+                      <p id="case-action-error" class="error" role="alert" hidden></p>
+                      <button id="submit-case-action" class="button primary" type="submit" hidden>Record action</button>
+                    </form>
+                  </section>
+
+                  <section class="pane case-timeline" aria-labelledby="case-timeline-title">
+                    <div class="pane-heading"><h3 id="case-timeline-title">Evidence timeline</h3></div>
+                    <p id="case-timeline-empty" class="pane-message support" hidden>No actions have been recorded for this case.</p>
+                    <ol id="case-timeline"></ol>
+                  </section>
+                </div>
+              </div>
+              <p id="case-save-status" class="sr-only" role="status"></p>
+            </div>
+          </div>
         </section>
       </main>
     </div>
@@ -136,6 +212,24 @@
       <div class="dialog-actions">
         <button id="cancel-capture" class="button secondary" type="button">Cancel</button>
         <button id="save-capture" class="button primary" type="submit">Save observation</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="case-dialog" aria-labelledby="case-dialog-title">
+    <div class="dialog-heading">
+      <h2 id="case-dialog-title">New change case</h2>
+      <p id="case-create-context" class="support"></p>
+    </div>
+    <form id="case-create-form" class="form">
+      <div class="field">
+        <label for="case-create-title">Case title</label>
+        <input id="case-create-title" name="title" type="text" maxlength="160" required autofocus>
+      </div>
+      <p id="case-create-error" class="error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button id="case-create-cancel" class="button secondary" type="button">Cancel</button>
+        <button id="case-create-submit" class="button primary" type="submit">Create case</button>
       </div>
     </form>
   </dialog>
