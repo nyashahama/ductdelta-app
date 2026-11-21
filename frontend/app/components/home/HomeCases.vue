@@ -38,8 +38,8 @@ const recorded = new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium', timeZon
         base: 'table-fixed border-separate border-spacing-0',
         thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
         tbody: '[&>tr]:last:[&>td]:border-b-0',
-        th: 'first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r wrap-anywhere whitespace-normal max-sm:last:hidden',
-        td: 'border-b border-default wrap-anywhere whitespace-normal max-sm:last:hidden'
+        th: 'first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r whitespace-normal max-sm:first:w-3/5 max-sm:nth-3:hidden max-sm:last:hidden',
+        td: 'border-b border-default wrap-anywhere whitespace-normal max-sm:nth-3:hidden max-sm:last:hidden'
       }"
     >
       <template #title-cell="{ row }">
