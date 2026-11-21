@@ -50,6 +50,10 @@ impl From<Error> for Rejection {
         match error.code().map(|value| value.code()) {
             Some("28000") => Self(StatusCode::UNAUTHORIZED, "Sign in required."),
             Some("42501") => Self(StatusCode::NOT_FOUND, "This record is unavailable."),
+            Some("DD003") => Self(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "Resolve every open or disputed quote line before closing the case.",
+            ),
             Some("DD002") => Self(
                 StatusCode::CONFLICT,
                 "Keep at least one company administrator.",

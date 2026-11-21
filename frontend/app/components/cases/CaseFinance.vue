@@ -25,6 +25,9 @@ const rows = computed(() => (Object.entries(moneyLabels) as [MoneyField, string]
     <p v-if="value.quote_awaiting_decision" class="border-b border-default px-4 py-3 text-sm text-warning">
       The latest quote is awaiting a decision.
     </p>
+    <p v-if="value.unresolved_lines" class="border-b border-default px-4 py-3 text-sm text-warning">
+      {{ value.unresolved_lines }} {{ value.unresolved_lines === 1 ? 'quote line remains' : 'quote lines remain' }} open or disputed.
+    </p>
     <dl class="grid grid-cols-2 gap-px bg-border md:grid-cols-3">
       <div
         v-for="row in rows"

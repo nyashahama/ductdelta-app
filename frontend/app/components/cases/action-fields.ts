@@ -67,6 +67,8 @@ export function actionFields(kind: ActionKind, record: CaseRecord): ActionField[
         money('amount', 'Allocation amount'), reference('Allocation reference')]
     case 'reverse_allocation':
       return [linked('allocation', 'Allocation', unreversedAllocations(record)), paragraph('reason', 'Reversal reason', 4000)]
+    case 'reopen':
+      return [paragraph('reason', 'Reopening reason', 4000)]
     case 'close':
       return [{ name: 'outcome', label: 'Outcome', options: outcomes.map(([value, label]) => ({ value, label })) },
         paragraph('reason', 'Closeout reason', 4000)]
