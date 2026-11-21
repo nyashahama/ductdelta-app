@@ -32,4 +32,8 @@ Generate an operation UUID once per intended capture. A retry with the same auth
 
 The list shows up to 50 records, newest server receipt first, with a one-line note preview. Copy the UUID from the `Next page` line to continue. Listing is live across invocations. Start from the first page again to see observations recorded since opening it. Each request checks project membership and resolves any continuation UUID only inside that project. Use `show` to read the full note.
 
-The current interface is a local command line with text evidence. It establishes the capture and access rules for the later web workflow.
+## Workspace server
+
+Apply the migrations in number order. Run `ductdelta serve` with a local PostgreSQL login that belongs to `ductdelta_web_runtime`. That role can invoke workspace commands. An administrator issues a sign-in key for an existing actor with `ductdelta issue-key ACTOR_UUID DISPLAY_NAME` and delivers it privately. Rotation invalidates prior sessions for that actor.
+
+The server binds to loopback at `127.0.0.1:3000` by default. Configure a loopback `DUCTDELTA_LISTEN` and the exact public HTTPS `DUCTDELTA_ORIGIN` for a TLS reverse proxy. Preserve the configured Host header and apply request time and rate limits at the proxy. The local demo uses HTTP on its exact loopback address only. Run `python3 scripts/check_workspace.py` for the HTTP and database checks.

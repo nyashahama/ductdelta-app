@@ -6,14 +6,14 @@ A case can start with an instruction, site condition, substitution or revised do
 
 ## Development
 
-The first implementation is a Rust command line that saves a site observation in PostgreSQL. A project member can browse recent observations and open the original note to see who recorded it and when. Retrying the same capture returns the original record.
-
-On Linux with Rust 1.94.1, PostgreSQL 18 tools and Python 3, run the synthetic demo and integration checks.
+On Linux with Rust 1.94.1, PostgreSQL 18 tools and Python 3, start the synthetic workspace.
 
 ```sh
-python3 scripts/check_postgres.py --demo
+python3 scripts/check_workspace.py --serve
 ```
 
-The harness creates and removes its own socket-only database clusters. Set `PG_BINDIR` if the PostgreSQL 18 tools are outside `/usr/lib/postgresql/18/bin`. See [capture and verification](docs/capture.md), [the product contract](docs/product.md) and [engineering guidance](AGENTS.md).
+Open the printed loopback URL and sign in with the synthetic access key. The harness uses a disposable socket-only database. Set `PG_BINDIR` if the PostgreSQL 18 tools are outside `/usr/lib/postgresql/18/bin`. The CLI remains available for [capture and verification](docs/capture.md).
+
+The dashboard uses DuctDelta's own markup and styles, with [Tabler's vertical layout](https://docs.tabler.io/ui/layout/page-layouts) and [table patterns](https://docs.tabler.io/ui/components/table) as references.
 
 Production acceptance requires review with contractors on a completed job through matched payment and a disputed change. Use only synthetic fixtures in this repository.

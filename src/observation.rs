@@ -200,7 +200,7 @@ pub(crate) fn write_project_list(
     Ok(())
 }
 
-fn valid_text(value: &str, max_characters: usize) -> bool {
+pub(crate) fn valid_text(value: &str, max_characters: usize) -> bool {
     !value.trim().is_empty() && !value.contains('\0') && value.chars().count() <= max_characters
 }
 
@@ -224,7 +224,7 @@ fn display_text<'text>(value: &'text str, allowed_controls: &[char]) -> Cow<'tex
     Cow::Owned(display)
 }
 
-fn parse_observed_time(value: &str) -> Result<OffsetDateTime, &'static str> {
+pub(crate) fn parse_observed_time(value: &str) -> Result<OffsetDateTime, &'static str> {
     if let Some((_, fraction)) = value.split_once('.')
         && fraction.bytes().take_while(u8::is_ascii_digit).count() > 6
     {

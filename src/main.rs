@@ -1,4 +1,5 @@
 mod observation;
+mod workspace;
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -14,6 +15,8 @@ const USAGE: &str = "Usage:
   ductdelta capture PROJECT_UUID OPERATION_UUID OBSERVED_AT [LOCATION] < note.txt
   ductdelta list PROJECT_UUID [BEFORE_OBSERVATION_UUID]
   ductdelta show PROJECT_UUID OBSERVATION_UUID
+  ductdelta serve
+  ductdelta issue-key ACTOR_UUID DISPLAY_NAME
 
 Use an RFC 3339 observation time with an offset, or - if the time is unknown.
 Set DUCTDELTA_DATABASE_URL to a PostgreSQL connection on a local Unix socket.";
@@ -41,6 +44,12 @@ fn run() -> Result<(), &'static str> {
     let result = match arguments.as_slice() {
         [] => writeln!(output, "{USAGE}"),
         [help] if help == "--help" || help == "-h" => writeln!(output, "{USAGE}"),
+        [command] if command == "serve" => return workspace::serve(),
+        [command, actor, name] if command == "issue-key" => {
+            let actor = Uuid::parse_str(actor).map_err(|_| "Invalid actor UUID.")?;
+            let key = workspace::issue_key(&mut connect()?, actor, name)?;
+            writeln!(output, "{key}")
+        }
         [command, project, operation, observed_at, location @ ..]
             if command == "capture" && location.len() <= 1 =>
         {
@@ -79,6 +88,12 @@ fn run() -> Result<(), &'static str> {
 }
 
 fn connect() -> Result<Client, &'static str> {
+    database_config()?
+        .connect(NoTls)
+        .map_err(|_| "Could not connect to PostgreSQL using the configured Unix socket.")
+}
+
+fn database_config() -> Result<Config, &'static str> {
     let connection = env::var("DUCTDELTA_DATABASE_URL")
         .map_err(|_| "Set DUCTDELTA_DATABASE_URL to a PostgreSQL Unix socket connection.")?;
     let config: Config = connection
@@ -87,7 +102,5 @@ fn connect() -> Result<Client, &'static str> {
     if !matches!(config.get_hosts(), [Host::Unix(_)]) || !config.get_hostaddrs().is_empty() {
         return Err("The command line requires a single local PostgreSQL Unix socket.");
     }
-    config
-        .connect(NoTls)
-        .map_err(|_| "Could not connect to PostgreSQL using the configured Unix socket.")
+    Ok(config)
 }
