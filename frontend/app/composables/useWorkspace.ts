@@ -10,6 +10,7 @@ export function useWorkspace() {
   const projects = useState<Project[] | undefined>('workspace-projects', () => undefined)
   const error = useState('workspace-error', () => '')
   const signInError = useState('workspace-sign-in-error', () => '')
+  const sessionCheckError = useState('workspace-session-check-error', () => '')
   const signing = useState('workspace-signing', () => false)
 
   const requestedProject = computed(() => typeof route.query.project === 'string'
@@ -41,6 +42,7 @@ export function useWorkspace() {
     projects.value = undefined
     error.value = ''
     signInError.value = message
+    sessionCheckError.value = ''
   }
 
   function expire() {
@@ -59,26 +61,34 @@ export function useWorkspace() {
     }
   }
 
+  async function refreshSession() {
+    session.value = await api<Session>('/api/session')
+    sessionCheckError.value = ''
+    await loadProjects()
+  }
+
   async function restoreSession() {
-    if (session.value !== undefined) return
+    if (session.value !== undefined && !sessionCheckError.value) return
     try {
-      session.value = await api<Session>('/api/session')
-      await loadProjects()
+      await refreshSession()
     } catch (cause) {
-      endSession(cause instanceof ApiError && cause.status === 401 ? '' : reportError(cause, expire))
+      const message = cause instanceof ApiError && cause.status === 401 ? '' : reportError(cause, expire)
+      endSession(message)
+      sessionCheckError.value = message
     }
   }
 
   async function signIn(key: string) {
-    if (signing.value) return
+    if (signing.value) return false
     signing.value = true
     signInError.value = ''
     try {
       await api<undefined>('/api/session', requestJson({ key }))
-      session.value = await api<Session>('/api/session')
-      await loadProjects()
+      await refreshSession()
+      return true
     } catch (cause) {
       signInError.value = cause instanceof ApiError ? cause.message : 'Could not reach DuctDelta. Try again.'
+      return false
     } finally {
       signing.value = false
     }
@@ -100,7 +110,7 @@ export function useWorkspace() {
   }
 
   return {
-    session, project, projects, view, unavailableProject, error, signInError, signing,
-    target, expire, loadProjects, restoreSession, signIn, signOut
+    session, project, projects, view, unavailableProject, error, signInError, sessionCheckError, signing,
+    target, expire, loadProjects, refreshSession, restoreSession, signIn, signOut
   }
 }
