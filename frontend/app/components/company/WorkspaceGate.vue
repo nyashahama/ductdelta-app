@@ -21,6 +21,9 @@ const pending = ref(false)
 const error = ref('')
 const copied = ref('')
 const openedCompany = ref(false)
+const invitationSignIn = ref(false)
+const joiningWithExistingAccount = computed(() => Boolean(props.invitation && invitationSignIn.value && !session.value))
+const recovering = computed(() => !props.invitation && mode.value === 'recover')
 
 const title = computed(() => {
   if (keys.value) return 'Save your sign-in keys'
@@ -36,6 +39,18 @@ function changeMode(next: typeof mode.value) {
   mode.value = next
   key.value = next === 'recover' ? props.pendingKeys[0] ?? '' : ''
   error.value = ''
+}
+
+function chooseInvitationSignIn(enabled: boolean) {
+  invitationSignIn.value = enabled
+  key.value = ''
+  error.value = ''
+  signInError.value = ''
+}
+
+function cancelInvitation() {
+  chooseInvitationSignIn(false)
+  emit('cancel')
 }
 
 async function copy(value: string, label: string) {
@@ -65,11 +80,16 @@ async function finish() {
 
 async function submit() {
   if (pending.value || signing.value || (props.invitation && sessionCheckError.value)) return
-  if (mode.value === 'sign-in' && !props.invitation) {
+  const joining = joiningWithExistingAccount.value
+  if (joining || (mode.value === 'sign-in' && !props.invitation)) {
+    error.value = ''
     const signedIn = await signIn(key.value.trim())
     key.value = ''
-    if (signedIn && !props.pendingKeys.length) emit('done')
-    else if (signedIn) changeMode('recover')
+    if (signedIn) {
+      if (joining) chooseInvitationSignIn(false)
+      else if (props.pendingKeys.length) changeMode('recover')
+      else emit('done')
+    }
     return
   }
   pending.value = true
@@ -116,7 +136,8 @@ async function submit() {
       error.value = 'This invitation has expired, was cancelled, or has already been used.'
     } else if (props.invitation && currentAccount && cause instanceof ApiError && cause.status === 401) {
       expire()
-      error.value = 'Your session ended. Cancel this screen and sign in, or accept with a new account.'
+      chooseInvitationSignIn(true)
+      error.value = 'Your session ended. Sign in again to accept this invitation.'
     } else if (mode.value === 'recover' && cause instanceof ApiError && cause.status === 401) {
       error.value = 'This recovery key is unavailable.'
     } else if (recoveryKey && props.pendingKeys.includes(recoveryKey)) {
@@ -208,10 +229,10 @@ async function submit() {
             />
           </template>
         </UAlert>
-        <p v-else-if="invitation" class="text-muted">
-          {{ session ? 'Accept this invitation with your current DuctDelta account.' : 'Accept your invitation to set up your DuctDelta account.' }}
+        <p v-else-if="invitation && !joiningWithExistingAccount" class="text-muted">
+          {{ session ? 'Accept this invitation as ' + session.name + '.' : 'Accept this invitation to create a new DuctDelta account.' }}
         </p>
-        <template v-else-if="mode === 'company'">
+        <template v-else-if="!invitation && mode === 'company'">
           <UFormField label="Company name" name="company" required>
             <UInput
               v-model="company"
@@ -234,10 +255,10 @@ async function submit() {
           </UFormField>
         </template>
         <template v-else>
-          <p v-if="mode === 'recover' && pendingKeys.length" class="text-sm text-muted">
+          <p v-if="recovering && pendingKeys.length" class="text-sm text-muted">
             If setup was interrupted, try one of the saved recovery keys below.
           </p>
-          <UFormField :label="mode === 'recover' ? 'Recovery key' : 'Access key'" name="key" required>
+          <UFormField :label="recovering ? 'Recovery key' : 'Access key'" name="key" required>
             <UInput
               v-model="key"
               type="password"
@@ -247,7 +268,7 @@ async function submit() {
               class="w-full"
             />
           </UFormField>
-          <div v-if="mode === 'recover' && pendingKeys.length" class="flex flex-wrap gap-2">
+          <div v-if="recovering && pendingKeys.length" class="flex flex-wrap gap-2">
             <UButton
               v-for="(saved, index) in pendingKeys"
               :key="saved"
@@ -262,7 +283,7 @@ async function submit() {
         </template>
         <UButton
           type="submit"
-          :label="invitation ? 'Accept invitation' : ({ 'sign-in': 'Sign in', 'company': 'Create company', 'recover': 'Recover account' })[mode]"
+          :label="invitation ? (joiningWithExistingAccount ? 'Sign in' : 'Accept invitation') : ({ 'sign-in': 'Sign in', 'company': 'Create company', 'recover': 'Recover account' })[mode]"
           block
           :loading="pending || signing"
           :disabled="Boolean(invitation && sessionCheckError)"
@@ -270,7 +291,7 @@ async function submit() {
       </form>
 
       <UAlert
-        v-if="error || (!keys && !invitation && mode === 'sign-in' && signInError)"
+        v-if="error || (!keys && signInError && (joiningWithExistingAccount || (!invitation && mode === 'sign-in')))"
         class="mt-4"
         role="alert"
         color="error"
@@ -279,7 +300,24 @@ async function submit() {
       />
 
       <template v-if="!keys && !pending">
-        <div v-if="!invitation && mode === 'sign-in'" class="mt-4 flex flex-wrap gap-2 justify-between">
+        <div v-if="invitation" class="mt-4 flex flex-wrap gap-2 justify-between">
+          <UButton
+            v-if="!session && !sessionCheckError"
+            :label="joiningWithExistingAccount ? 'Back to invitation' : 'Sign in to accept'"
+            color="neutral"
+            variant="link"
+            :disabled="signing"
+            @click="chooseInvitationSignIn(!joiningWithExistingAccount)"
+          />
+          <UButton
+            label="Cancel invitation"
+            color="neutral"
+            variant="link"
+            :disabled="signing"
+            @click="cancelInvitation"
+          />
+        </div>
+        <div v-else-if="mode === 'sign-in'" class="mt-4 flex flex-wrap gap-2 justify-between">
           <UButton
             label="Create a company"
             color="neutral"
@@ -296,10 +334,10 @@ async function submit() {
         <UButton
           v-else
           class="mt-4"
-          :label="invitation ? 'Cancel invitation' : 'Back to sign in'"
+          label="Back to sign in"
           color="neutral"
           variant="link"
-          @click="invitation ? emit('cancel') : changeMode('sign-in')"
+          @click="changeMode('sign-in')"
         />
         <UButton
           v-if="!invitation && session && pendingKeys.length"

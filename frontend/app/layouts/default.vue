@@ -38,6 +38,10 @@ function clearInvitation() {
   } catch {
     // The current tab can still continue.
   }
+  // Browsers that block session storage retain the invite in the fragment until it is cleared.
+  if (new URLSearchParams(location.hash.slice(1)).has('invite')) {
+    void router.replace({ path: route.path, query: route.query, hash: '' })
+  }
 }
 
 function entered() {

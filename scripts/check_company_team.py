@@ -75,11 +75,13 @@ def verify(server):
     accept(server, revoked["token"], expected=404)
 
     expired = expired_invitation(server, path, admin)
+    actor_count = server.sql("SELECT count(*) FROM ductdelta.actor")
     response, headers = accept(server, expired["token"], expected=404)
     assert response == {"message": "This record is unavailable."}
     assert headers.get("Set-Cookie") is None
     accept(server, expired["token"], existing=outsider, expected=404)
     assert_expired_invitation_unused(server, expired)
+    assert server.sql("SELECT count(*) FROM ductdelta.actor") == actor_count
     assert len(server.request(f"{path}/team", cookie=admin)[0]["members"]) == 1
 
     member_invite = invite(server, path, admin, "Site teammate")

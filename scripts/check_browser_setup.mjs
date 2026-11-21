@@ -14,7 +14,8 @@ const checkWidth = async (page) => assert.ok(await page.evaluate(
 
 try {
   const desktop = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
-  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+  const phoneOptions = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }
+  const phone = await browser.newContext(phoneOptions)
   const owner = await desktop.newPage()
   const member = await phone.newPage()
   for (const page of [owner, member]) {
@@ -31,6 +32,7 @@ try {
   assert.equal(accessKey.length, 64)
   await button(owner, 'I saved my keys').click()
   await heading(owner, 'Projects').waitFor()
+  const [basinMechanical] = await (await owner.request.get(origin + '/api/companies')).json()
   await owner.getByLabel('Project name').fill('Hospital plantroom')
   await button(owner, 'Create project').click()
   await owner.getByRole('link', { name: 'Hospital plantroom', exact: true }).waitFor()
@@ -51,6 +53,7 @@ try {
   await button(member, 'Accept invitation').click()
   await heading(member, 'Save your sign-in keys').waitFor()
   const recoveryKey = await member.getByLabel('Recovery key', { exact: true }).inputValue()
+  const memberKey = await member.getByLabel('Access key', { exact: true }).inputValue()
   await button(member, 'I saved my keys').click()
   await member.getByText('Your account has no assigned projects.', { exact: true }).waitFor()
   await button(owner, 'Refresh setup').click()
@@ -74,18 +77,108 @@ try {
   await member.getByText('A beam blocks the duct route.', { exact: true }).first().waitFor()
   await checkWidth(member)
   await member.screenshot({ path: 'artifacts/company-setup-mobile.png', animations: 'disabled' })
+
+  const blockedStorage = await browser.newContext(phoneOptions)
+  await blockedStorage.addInitScript(() => {
+    const setItem = Storage.prototype.setItem
+    Storage.prototype.setItem = function (key, value) {
+      if (key === 'ductdelta-pending-invitation') throw new DOMException('Storage is blocked', 'SecurityError')
+      setItem.call(this, key, value)
+    }
+  })
+  const cancelled = await blockedStorage.newPage()
+  await cancelled.goto(origin + '/#invite=' + process.env.DD_EXPIRED_INVITE)
+  await heading(cancelled, 'Join the company').waitFor({ timeout: 8000 })
+  assert.notEqual(new URL(cancelled.url()).hash, '')
+  await button(cancelled, 'Cancel invitation').click()
+  await cancelled.waitForFunction(() => !location.hash, undefined, { timeout: 8000 })
+  await cancelled.reload()
+  await heading(cancelled, 'Sign in to your workspace').waitFor()
+
+  const signedOutPhone = await browser.newContext(phoneOptions)
+  const existing = await signedOutPhone.newPage()
+  existing.setDefaultTimeout(8000)
+  existing.on('pageerror', error => errors.push(String(error)))
+  const token = process.env.DD_SECOND_INVITE
+  const secondInvite = origin + '/#invite=' + token
+  const desktopRecipient = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
+  await desktopRecipient.goto(secondInvite)
+  await button(desktopRecipient, 'Sign in to accept').click()
+  await desktopRecipient.getByLabel('Access key', { exact: true }).fill(memberKey)
+  await button(desktopRecipient, 'Sign in').click()
+  await desktopRecipient.getByText('Accept this invitation as Sam Site.', { exact: true }).waitFor()
+  await checkWidth(desktopRecipient)
+  await desktopRecipient.screenshot({ path: 'artifacts/company-invitation-existing-desktop.png', animations: 'disabled' })
+  await button(desktopRecipient, 'Cancel invitation').click()
+  await heading(desktopRecipient, 'Project overview').waitFor()
+  await desktopRecipient.close()
+
+  const requestsWithToken = []
+  existing.on('request', request => {
+    const url = new URL(request.url())
+    if (url.pathname.includes(token) || url.search.includes(token)
+        || request.headers().referer?.includes(token) || request.postData()?.includes(token)) {
+      requestsWithToken.push(url.pathname)
+    }
+  })
+  await existing.goto(secondInvite)
+  await heading(existing, 'Join the company').waitFor()
+  await existing.waitForFunction(() => !location.hash)
+  await button(existing, 'Sign in to accept').click()
+  await existing.getByLabel('Access key', { exact: true }).fill('0'.repeat(64))
+  await button(existing, 'Sign in').click()
+  await existing.getByRole('alert').getByText('The access key is invalid.').waitFor()
+  await existing.getByLabel('Access key', { exact: true }).fill(memberKey)
+  await button(existing, 'Sign in').click()
+  await existing.getByText('Accept this invitation as Sam Site.', { exact: true }).waitFor()
+  await existing.reload()
+  await existing.getByText('Accept this invitation as Sam Site.', { exact: true }).waitFor()
+  await signedOutPhone.clearCookies()
+  await button(existing, 'Accept invitation').click()
+  await existing.getByRole('alert').getByText('Your session ended. Sign in again to accept this invitation.').waitFor()
+  await existing.getByLabel('Access key', { exact: true }).fill('0'.repeat(64))
+  await button(existing, 'Sign in').click()
+  await existing.getByRole('alert').getByText('The access key is invalid.').waitFor()
+  await existing.getByLabel('Access key', { exact: true }).fill(memberKey)
+  await button(existing, 'Sign in').click()
+  await existing.getByText('Accept this invitation as Sam Site.', { exact: true }).waitFor()
+  await checkWidth(existing)
+  await existing.screenshot({ path: 'artifacts/company-invitation-existing-mobile.png', animations: 'disabled' })
+  assert.deepEqual(requestsWithToken, ['/api/invitations/accept'])
+  const originalMembership = { ...basinMechanical, role: 'member' }
+  assert.deepEqual(await (await existing.request.get(origin + '/api/companies')).json(), [originalMembership])
+  await button(existing, 'Accept invitation').click()
+  await heading(existing, 'Project overview').waitFor()
+  const companyList = await (await existing.request.get(origin + '/api/companies')).json()
+  assert.deepEqual(companyList, [
+    originalMembership,
+    { id: process.env.DD_SECOND_COMPANY, name: 'West Mechanical', role: 'admin' }
+  ])
+  assert.deepEqual(requestsWithToken, ['/api/invitations/accept', '/api/invitations/accept'])
+  await existing.reload()
+  await heading(existing, 'Project overview').waitFor()
+
+  const expired = await browser.newContext(phoneOptions)
+  const recipient = await expired.newPage()
+  await recipient.goto(origin + '/#invite=' + process.env.DD_EXPIRED_INVITE)
+  await heading(recipient, 'Join the company').waitFor()
+  const rejected = recipient.waitForResponse(response => response.url() === origin + '/api/invitations/accept')
+  await button(recipient, 'Accept invitation').click()
+  assert.equal((await rejected).status(), 404)
+  await recipient.getByRole('alert').getByText('This invitation has expired, was cancelled, or has already been used.').waitFor()
+  await checkWidth(recipient)
+  await recipient.screenshot({ path: 'artifacts/company-invitation-expired-mobile.png', animations: 'disabled' })
+  await button(recipient, 'Cancel invitation').click()
+  await recipient.reload()
+  await heading(recipient, 'Sign in to your workspace').waitFor()
+
   await button(owner, 'Remove from company').click()
   await button(owner, 'Confirm removal').click()
   await owner.getByText('Company access removed.', { exact: true }).waitFor()
   await member.reload()
   await member.getByText('This project is unavailable. Select a project to continue.', { exact: true }).waitFor()
+  assert.deepEqual(await (await existing.request.get(origin + '/api/companies')).json(), [companyList[1]])
   await owner.keyboard.press('Escape')
-  await owner.getByLabel('Invitee name').fill('Sam Site')
-  await button(owner, 'Create invitation').click()
-  await member.goto(await inviteInput.inputValue())
-  await member.getByText('Accept this invitation with your current DuctDelta account.', { exact: true }).waitFor()
-  await button(member, 'Accept invitation').click()
-  await member.getByText('Your account has no assigned projects.', { exact: true }).waitFor()
   const newDevice = await browser.newPage()
   await newDevice.goto(origin)
   await button(newDevice, 'Recover access').click()
@@ -126,7 +219,7 @@ try {
   await interrupted.getByRole('link', { name: 'Company settings', exact: true }).click()
   await heading(interrupted, 'Interrupted Mechanical').waitFor()
   assert.deepEqual(errors, [])
-  console.log('PASS: Chrome company setup from an empty database, smartphone invite acceptance, project access, capture, revocation and interrupted-registration recovery')
+  console.log('PASS: Chrome company setup, new and existing account invitations, expired-link rejection, project access, capture, revocation and interrupted-registration recovery')
 } finally {
   await browser.close()
 }
