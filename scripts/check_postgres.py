@@ -86,6 +86,16 @@ def verify(socket, demo):
     def show(actor, observation, *, project=PROJECT, expected=0, at_socket=socket):
         return cli(actor, "show", project, observation, expected=expected, at_socket=at_socket)
 
+    def project_page(actor, project=PROJECT, before=None, *, expected=0, at_socket=socket):
+        arguments = ("list", project) if before is None else ("list", project, before)
+        return cli(actor, *arguments, expected=expected, at_socket=at_socket)
+
+    def page_ids(result):
+        return [
+            str(uuid.UUID(line.split(" | ", 1)[0]))
+            for line in result.stdout.splitlines()[1:] if not line.startswith("Next page: ")
+        ]
+
     def row_count(project, operation):
         return sql(
             "SELECT count(*) FROM ductdelta.observation "
@@ -107,6 +117,18 @@ def verify(socket, demo):
     assert "Recorded at:" in view and view.endswith(f"\n{NOTE}\n")
     assert "Location: Plantroom A\n" in view
     print("PASS: capture and retrieve original text, actor, location and both times")
+
+    sql((ROOT / "migrations/0002_list_observations.sql").read_text())
+    existing_page = project_page("dd_viewer")
+    assert page_ids(existing_page) == [created]
+    assert "Supervisor observed a possible duct reroute. Written direction is pending." in existing_page.stdout
+    assert "Next page:" not in existing_page.stdout
+    assert "No observations" in project_page("dd_outsider", OTHER_PROJECT).stdout
+    outsider_denial = project_page("dd_outsider", expected=1)
+    assert "unavailable" in outsider_denial.stderr.lower()
+    assert project_page("dd_other_org", expected=1).stderr == outsider_denial.stderr
+    assert project_page("dd_viewer", str(uuid.uuid4()), expected=1).stderr == outsider_denial.stderr
+    print("PASS: list addresses prior captures after migration and distinguishes empty from unavailable")
 
     replay = capture("dd_reporter", primary, date="2026-05-04T06:30:12.123456Z")
     assert replay.stdout.strip() == created and row_count(PROJECT, primary) == "1"
@@ -160,7 +182,42 @@ def verify(socket, demo):
     assert sql(
         f"SELECT position(chr(27) IN note) > 0 FROM ductdelta.observation WHERE id = '{control_id}';"
     ) == "t"
+    list_display = project_page("dd_viewer").stdout
+    assert "\x1b" not in list_display and "Plantroom\\nLevel 1" in list_display
+    long_line = "é" * 120
+    long_id = capture("dd_reporter", str(uuid.uuid4()), note=long_line + " retained").stdout.strip()
+    listed = next(line for line in project_page("dd_viewer").stdout.splitlines() if line.startswith(long_id))
+    assert listed.endswith(long_line + "…")
+    assert show("dd_viewer", long_id).stdout.endswith(long_line + " retained\n")
     print("PASS: display escapes terminal control characters and preserves stored evidence")
+
+    # A single statement gives all 100 observations the same recorded_at value.
+    sql(
+        f"SELECT ductdelta.capture_observation('{OTHER_PROJECT}', gen_random_uuid(), NULL, NULL, "
+        "'Synthetic observation ' || sequence) FROM generate_series(1, 100) AS sequence;",
+        actor="dd_reporter",
+    )
+    ordered_ids = sql(
+        f"SELECT id FROM ductdelta.observation WHERE project_id = '{OTHER_PROJECT}' "
+        "ORDER BY recorded_at DESC, id DESC;"
+    ).splitlines()
+    assert len(ordered_ids) == 100
+    assert sql(
+        f"SELECT count(DISTINCT recorded_at) FROM ductdelta.observation WHERE project_id = '{OTHER_PROJECT}';"
+    ) == "1"
+    first_page = project_page("dd_outsider", OTHER_PROJECT)
+    assert page_ids(first_page) == ordered_ids[:50]
+    cursor = ordered_ids[49]
+    assert first_page.stdout.splitlines()[-1] == f"Next page: {cursor}"
+    recent = capture("dd_reporter", str(uuid.uuid4()), project=OTHER_PROJECT).stdout.strip()
+    assert page_ids(project_page("dd_outsider", OTHER_PROJECT))[0] == recent
+    final_page = project_page("dd_outsider", OTHER_PROJECT, cursor)
+    assert page_ids(final_page) == ordered_ids[50:] and "Next page:" not in final_page.stdout
+    assert "No observations" in project_page("dd_outsider", OTHER_PROJECT, ordered_ids[-1]).stdout
+    foreign_cursor = project_page("dd_reporter", OTHER_PROJECT, created, expected=1)
+    assert "page reference" in foreign_cursor.stderr.lower()
+    assert project_page("dd_reporter", OTHER_PROJECT, str(uuid.uuid4()), expected=1).stderr == foreign_cursor.stderr
+    print("PASS: keyset pages handle tied times, intervening inserts and scoped cursors")
 
     equal_op = str(uuid.uuid4())
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -187,9 +244,12 @@ def verify(socket, demo):
 
     sql(f"UPDATE ductdelta.project_member SET permission = 'read' WHERE project_id = '{PROJECT}' AND actor_id = '{REPORTER}';")
     assert show("dd_reporter", created).stdout == view
+    authorized_page = project_page("dd_reporter").stdout
+    assert created in authorized_page
     capture("dd_reporter", primary, expected=1)
     sql(f"DELETE FROM ductdelta.project_member WHERE project_id = '{PROJECT}' AND actor_id = '{REPORTER}';")
     show("dd_reporter", created, expected=1)
+    project_page("dd_reporter", expected=1)
     capture("dd_reporter", primary, expected=1)
     assert row_count(PROJECT, primary) == "1"
     print("PASS: downgrade blocks replay and removal blocks reads")
@@ -201,7 +261,9 @@ def verify(socket, demo):
         sql(fixture_roles, at_socket=restored)
         run([BIN / "pg_restore", "--exit-on-error", "--dbname", connection(restored, "dd_admin"), dump])
         assert show("dd_viewer", created, at_socket=restored).stdout == view
+        assert project_page("dd_viewer", at_socket=restored).stdout == authorized_page
         show("dd_reporter", created, at_socket=restored, expected=1)
+        project_page("dd_reporter", at_socket=restored, expected=1)
         show("dd_other_org", created, at_socket=restored, expected=1)
         restored_replay = capture("dd_reporter", primary, project=OTHER_PROJECT, at_socket=restored)
         assert restored_replay.stdout.strip() == other
@@ -209,6 +271,8 @@ def verify(socket, demo):
     if demo:
         print("\nSynthetic observation\n")
         print(view, end="")
+        print("\nProject observations\n")
+        print(authorized_page, end="")
 
 
 def main():

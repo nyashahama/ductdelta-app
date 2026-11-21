@@ -12,6 +12,7 @@ use crate::observation::{Draft, Observation, ObservationId, OperationId, Project
 
 const USAGE: &str = "Usage:
   ductdelta capture PROJECT_UUID OPERATION_UUID OBSERVED_AT [LOCATION] < note.txt
+  ductdelta list PROJECT_UUID [BEFORE_OBSERVATION_UUID]
   ductdelta show PROJECT_UUID OBSERVATION_UUID
 
 Use an RFC 3339 observation time with an offset, or - if the time is unknown.
@@ -62,6 +63,15 @@ fn run() -> Result<(), &'static str> {
             let observation = Observation::find(&mut connect()?, project, id)?
                 .ok_or("Observation unavailable in this project.")?;
             observation.write(&mut output)
+        }
+        [command, project, before @ ..] if command == "list" && before.len() <= 1 => {
+            let project = ProjectId(Uuid::parse_str(project).map_err(|_| "Invalid project UUID.")?);
+            let before = before
+                .first()
+                .map(|value| Uuid::parse_str(value).map(ObservationId))
+                .transpose()
+                .map_err(|_| "Invalid page reference UUID.")?;
+            return observation::write_project_list(&mut connect()?, project, before, &mut output);
         }
         _ => return Err(USAGE),
     };

@@ -12,6 +12,8 @@ use uuid::Uuid;
 
 const NOTE_CHARACTERS: usize = 4000;
 const LOCATION_CHARACTERS: usize = 120;
+const PAGE_SIZE: usize = 50;
+const PREVIEW_CHARACTERS: usize = 120;
 
 pub(crate) struct ProjectId(pub(crate) Uuid);
 pub(crate) struct OperationId(pub(crate) Uuid);
@@ -135,6 +137,67 @@ impl Observation {
         let note = display_text(&self.note, &['\n', '\t']);
         writeln!(output, "Location: {location}\n\n{note}")
     }
+}
+
+/// Lists a live page of the project's observations in server-receipt order.
+pub(crate) fn write_project_list(
+    database: &mut Client,
+    project: ProjectId,
+    before: Option<ObservationId>,
+    output: &mut impl Write,
+) -> Result<(), &'static str> {
+    const LIST_ERROR: &str = "Could not list the project's observations.";
+    const OUTPUT_ERROR: &str = "Could not write command output.";
+    let before = before.map(|id| id.0);
+    let rows = database
+        .query(
+            "SELECT id, recorded_at, location, note_preview
+             FROM ductdelta.list_observations($1, $2)
+             ORDER BY recorded_at DESC, id DESC",
+            &[&project.0, &before],
+        )
+        .map_err(|error| match error.code() {
+            Some(code) if code == &SqlState::INSUFFICIENT_PRIVILEGE => "Project unavailable.",
+            Some(code) if code == &SqlState::INVALID_PARAMETER_VALUE => {
+                "Page reference unavailable in this project."
+            }
+            _ => LIST_ERROR,
+        })?;
+    if rows.is_empty() {
+        return writeln!(output, "No observations in this page.").map_err(|_| OUTPUT_ERROR);
+    }
+
+    writeln!(
+        output,
+        "Observation | Recorded at (UTC) | Location | Preview"
+    )
+    .map_err(|_| OUTPUT_ERROR)?;
+    let mut last_id = None;
+    for row in rows.iter().take(PAGE_SIZE) {
+        let id: Uuid = row.try_get("id").map_err(|_| LIST_ERROR)?;
+        let recorded_at: OffsetDateTime = row.try_get("recorded_at").map_err(|_| LIST_ERROR)?;
+        let location: Option<&str> = row.try_get("location").map_err(|_| LIST_ERROR)?;
+        let note: &str = row.try_get("note_preview").map_err(|_| LIST_ERROR)?;
+        let time = format_time(recorded_at).map_err(|_| LIST_ERROR)?;
+        let location = display_text(location.unwrap_or("unspecified"), &[]);
+        let preview: String = note.chars().take(PREVIEW_CHARACTERS).collect();
+        let omitted = if preview.len() < note.len() {
+            "…"
+        } else {
+            ""
+        };
+        let preview = display_text(&preview, &[]);
+        writeln!(output, "{id} | {time} | {location} | {preview}{omitted}")
+            .map_err(|_| OUTPUT_ERROR)?;
+        last_id = Some(id);
+    }
+
+    if rows.len() > PAGE_SIZE
+        && let Some(id) = last_id
+    {
+        writeln!(output, "Next page: {id}").map_err(|_| OUTPUT_ERROR)?;
+    }
+    Ok(())
 }
 
 fn valid_text(value: &str, max_characters: usize) -> bool {

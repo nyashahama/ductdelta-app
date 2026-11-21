@@ -6,7 +6,7 @@ A case can start with an instruction, site condition, substitution or revised do
 
 ## Development
 
-The first implementation is a Rust command line that saves a site observation in PostgreSQL. A project member can retrieve the observation, including who recorded it and when. Retrying the same capture returns the original record.
+The first implementation is a Rust command line that saves a site observation in PostgreSQL. A project member can browse recent observations and open the original note to see who recorded it and when. Retrying the same capture returns the original record.
 
 On Linux with Rust 1.94.1, PostgreSQL 18 tools and Python 3, run the synthetic demo and integration checks.
 
