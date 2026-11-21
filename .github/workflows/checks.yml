@@ -22,6 +22,18 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+
+      - name: Build and check the TanStack workspace
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          npm run typecheck
+
       - name: Install the Rust version declared in Cargo.toml
         run: |
           rust_version=$(sed -nE 's/^rust-version = "([0-9]+\.[0-9]+\.[0-9]+)"$/\1/p' Cargo.toml)
@@ -67,3 +79,4 @@ jobs:
           python3 scripts/check_case_evidence.py
           python3 scripts/check_evidence_http.py
           python3 scripts/check_overview.py
+          python3 scripts/check_frontend.py
