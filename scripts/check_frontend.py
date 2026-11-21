@@ -80,12 +80,14 @@ def verify(server, public_dir):
     assert headers["Cache-Control"] == "no-store"
     policy = headers["Content-Security-Policy"]
     assert "frame-ancestors 'none'" in policy and "script-src 'self'" in policy
-    assert "'unsafe-inline'" not in policy and "'unsafe-eval'" not in policy
+    assert "'unsafe-eval'" not in policy
 
     shell = Shell()
     shell.feed(body.decode())
     shell.close()
     directives = dict(directive.strip().split(" ", 1) for directive in policy.split(";"))
+    assert directives.pop("style-src-attr") == "'unsafe-inline'"
+    assert all("'unsafe-inline'" not in value for value in directives.values())
     hashes = set(re.findall(r"'sha256-([^']+)'", directives["script-src"]))
     receipt = set((public_dir / "script-hashes.txt").read_text().splitlines())
     assert hashes == receipt

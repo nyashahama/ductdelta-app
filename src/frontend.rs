@@ -76,6 +76,8 @@ fn content_policy(scripts: &str, styles: &str) -> Result<HeaderValue, &'static s
     append_hashes(&mut policy, scripts)?;
     policy.push_str("; style-src 'self'");
     append_hashes(&mut policy, styles)?;
+    // Nuxt UI uses inline attributes for component sizing and transitions.
+    policy.push_str("; style-src-attr 'unsafe-inline'");
     HeaderValue::from_str(&policy).map_err(|_| "Invalid frontend content policy.")
 }
 
