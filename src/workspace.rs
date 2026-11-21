@@ -33,6 +33,12 @@ pub(crate) struct Workspace {
 pub(crate) struct Rejection(StatusCode, &'static str);
 pub(crate) type Reply<T> = Result<T, Rejection>;
 
+impl Rejection {
+    pub(crate) const fn invalid(message: &'static str) -> Self {
+        Self(StatusCode::UNPROCESSABLE_ENTITY, message)
+    }
+}
+
 impl IntoResponse for Rejection {
     fn into_response(self) -> Response {
         (self.0, Json(json!({"message": self.1}))).into_response()
@@ -170,6 +176,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
                 routing::get(observation_detail),
             )
             .merge(crate::cases::routes())
+            .merge(crate::evidence::routes())
             .layer(DefaultBodyLimit::max(64 * 1024))
             .layer(middleware::from_fn_with_state(
                 workspace.clone(),

@@ -16,4 +16,10 @@ Open the printed loopback URL and sign in with the synthetic access key. The har
 
 The dashboard uses DuctDelta's own markup and styles, with [Tabler's vertical layout](https://docs.tabler.io/ui/layout/page-layouts) and [table patterns](https://docs.tabler.io/ui/components/table) as references.
 
-Production acceptance requires review with contractors on a completed job through matched payment and a disputed change. Use only synthetic fixtures in this repository.
+## Supported workflow
+
+Project members can record an observation or a change case before a revised drawing arrives. Assigned roles can record notices, directions, signed quote amounts, performed work, certificates, retention, receipts and closeout. Evidence files retain their original bytes and SHA-256 hashes. Finance files require a finance grant.
+
+The ledger supports manual records in ZAR excluding VAT and allocates a receipt across certificates within one case. Notice dispatch and receipt are recorded from external references. The full release criteria are in the [product contract](docs/product.md).
+
+Production acceptance requires a completed job through matched payment, a disputed change, and deployment and restore checks. Keep customer records out of the public repository.
