@@ -1,0 +1,68 @@
+name: Application checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  application:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the Rust version declared in Cargo.toml
+        run: |
+          rust_version=$(sed -nE 's/^rust-version = "([0-9]+\.[0-9]+\.[0-9]+)"$/\1/p' Cargo.toml)
+          test -n "$rust_version"
+          rustup toolchain install "$rust_version" --profile minimal --component rustfmt --component clippy
+          printf 'RUSTUP_TOOLCHAIN=%s\n' "$rust_version" >> "$GITHUB_ENV"
+
+      - name: Install PostgreSQL 18 tools
+        run: |
+          key="$RUNNER_TEMP/apt.postgresql.org.asc"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc --output "$key"
+          fingerprints=$(gpg --batch --show-keys --with-colons "$key" |
+            awk -F: '$1 == "pub" {primary=1; next} $1 == "fpr" && primary {print $10; primary=0}')
+          test "$fingerprints" = B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8
+          sudo install -D -m 0644 "$key" /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          sudo tee /etc/apt/sources.list.d/pgdg.sources >/dev/null <<'SOURCE'
+          Types: deb
+          URIs: https://apt.postgresql.org/pub/repos/apt
+          Suites: noble-pgdg
+          Components: main
+          Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          SOURCE
+          # Only the test harness starts a server, on its private Unix socket.
+          sudo systemctl mask postgresql.service
+          sudo pg_conftool /etc/postgresql-common/createcluster.conf set create_main_cluster false
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get install -y --no-install-recommends postgresql-18 postgresql-client-18
+          /usr/lib/postgresql/18/bin/postgres --version
+
+      - name: Check Rust
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --all-targets --locked -- -D warnings
+          cargo test --locked
+
+      - name: Check PostgreSQL and HTTP workflows
+        run: |
+          python3 scripts/check_postgres.py
+          python3 scripts/check_workspace.py
+          python3 scripts/check_workflow.py
+          python3 scripts/check_case_http.py
+          python3 scripts/check_case_evidence.py
+          python3 scripts/check_evidence_http.py
