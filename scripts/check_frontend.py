@@ -7,6 +7,7 @@ import hashlib
 from html.parser import HTMLParser
 from pathlib import Path
 import re
+from urllib.parse import urljoin
 
 from check_workspace import ROOT, workspace
 
@@ -103,6 +104,15 @@ def verify(server, public_dir):
     assert shell.assets and shell.assets <= files.keys(), shell.assets - files.keys()
     assert any(file.suffix == ".js" for file in files.values())
     assert any(file.suffix == ".css" for file in files.values())
+    font_urls = set()
+    for stylesheet, asset in files.items():
+        if asset.suffix != ".css":
+            continue
+        for rule in re.findall(r"@font-face\s*\{([^}]+)\}", asset.read_text()):
+            if re.search(r"font-family:\s*['\"]?Public Sans(?:['\"]|;)", rule):
+                paths = re.findall(r"url\(['\"]?([^'\"()]+\.woff2)['\"]?\)", rule)
+                font_urls.update(urljoin(stylesheet, path) for path in paths)
+    assert font_urls and font_urls <= files.keys(), "Public Sans must ship with the workspace"
     for url, asset in files.items():
         asset_bytes, asset_headers = server.request(url)
         assert asset_bytes == asset.read_bytes(), url
