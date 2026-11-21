@@ -50,6 +50,10 @@ impl From<Error> for Rejection {
         match error.code().map(|value| value.code()) {
             Some("28000") => Self(StatusCode::UNAUTHORIZED, "Sign in required."),
             Some("42501") => Self(StatusCode::NOT_FOUND, "This record is unavailable."),
+            Some("DD002") => Self(
+                StatusCode::CONFLICT,
+                "Keep at least one company administrator.",
+            ),
             Some("DD001" | "40001" | "23505") => Self(
                 StatusCode::CONFLICT,
                 "The operation conflicts with a saved record.",
@@ -150,6 +154,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
                 routing::get(observation_detail),
             )
             .merge(crate::company_setup::routes())
+            .merge(crate::company_team::routes())
             .merge(crate::cases::routes())
             .merge(crate::evidence::routes())
             .merge(crate::overview::routes())
