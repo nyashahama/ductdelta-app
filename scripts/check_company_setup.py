@@ -3,7 +3,7 @@
 
 import secrets
 
-from check_workspace import workspace
+from check_workspace import REPORTER, workspace
 
 
 def verify(server):
@@ -59,6 +59,24 @@ def verify(server):
     print("PASS: empty installation, company-specific setup, project replay and browser credential recovery")
 
 
+def verify_upgrade(server):
+    login = server.sign_in(server.key(REPORTER, "Existing reporter"))
+    projects = server.request("/api/projects", cookie=login)[0]
+    assert projects
+    companies = server.request("/api/companies", cookie=login)[0]
+    assert companies and all(company["role"] == "member" for company in companies)
+    path = f"/api/companies/{companies[0]['id']}/projects"
+    server.request(path, cookie=login, expected=404)
+    server.sql(
+        "UPDATE ductdelta.organization_member SET role = 'admin' "
+        f"WHERE organization_id = '{companies[0]['id']}' AND actor_id = '{REPORTER}';"
+    )
+    assert server.request(path, cookie=login)[0]
+    print("PASS: populated upgrade preserves project access and requires explicit first-admin appointment")
+
+
 if __name__ == "__main__":
     with workspace(seed=False) as server:
         verify(server)
+    with workspace(seed_before="0008_company_setup.sql") as server:
+        verify_upgrade(server)

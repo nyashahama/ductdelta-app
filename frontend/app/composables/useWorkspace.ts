@@ -1,12 +1,14 @@
 import { ApiError, api, reportError, requestJson, type Project } from '~/utils/api'
 
-export type WorkspaceView = 'overview' | 'observations' | 'cases'
+export type WorkspaceView = 'overview' | 'observations' | 'cases' | 'company'
+export type Company = { id: string, name: string, role: 'admin' | 'member' }
 type Session = { name: string }
 
 export function useWorkspace() {
   const route = useRoute()
   const router = useRouter()
   const session = useState<Session | null | undefined>('workspace-session', () => undefined)
+  const companies = useState<Company[]>('workspace-companies', () => [])
   const projects = useState<Project[] | undefined>('workspace-projects', () => undefined)
   const error = useState('workspace-error', () => '')
   const signInError = useState('workspace-sign-in-error', () => '')
@@ -21,7 +23,7 @@ export function useWorkspace() {
     : projects.value?.find(({ id }) => id === requestedProject.value))
   const unavailableProject = computed(() => projects.value !== undefined
     && requestedProject.value !== undefined && !project.value)
-  const view = computed<WorkspaceView>(() => route.query.view === 'observations' || route.query.view === 'cases'
+  const view = computed<WorkspaceView>(() => route.query.view === 'observations' || route.query.view === 'cases' || route.query.view === 'company'
     ? route.query.view
     : 'overview')
 
@@ -29,7 +31,7 @@ export function useWorkspace() {
     return {
       path: '/',
       query: {
-        project: projectId,
+        project: next === 'company' ? undefined : projectId,
         view: next === 'overview' ? undefined : next,
         caseId: next === 'cases' ? id : undefined,
         observationId: next === 'observations' ? id : undefined
@@ -40,6 +42,7 @@ export function useWorkspace() {
   function endSession(message = '') {
     session.value = null
     projects.value = undefined
+    companies.value = []
     error.value = ''
     signInError.value = message
     sessionCheckError.value = ''
@@ -61,10 +64,21 @@ export function useWorkspace() {
     }
   }
 
+  async function loadCompanies() {
+    const current = session.value
+    if (!current) return
+    try {
+      const result = await api<Company[]>('/api/companies')
+      if (session.value === current) companies.value = result
+    } catch (cause) {
+      if (session.value === current) error.value = reportError(cause, expire)
+    }
+  }
+
   async function refreshSession() {
     session.value = await api<Session>('/api/session')
     sessionCheckError.value = ''
-    await loadProjects()
+    await Promise.all([loadProjects(), loadCompanies()])
   }
 
   async function restoreSession() {
@@ -110,7 +124,7 @@ export function useWorkspace() {
   }
 
   return {
-    session, project, projects, view, unavailableProject, error, signInError, sessionCheckError, signing,
-    target, expire, loadProjects, refreshSession, restoreSession, signIn, signOut
+    session, companies, project, projects, view, unavailableProject, error, signInError, sessionCheckError, signing,
+    target, expire, loadProjects, loadCompanies, refreshSession, restoreSession, signIn, signOut
   }
 }

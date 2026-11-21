@@ -3,7 +3,7 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 import WorkspaceGate from '~/components/company/WorkspaceGate.vue'
 
 const {
-  session, project, projects, view, signing, target, restoreSession, signOut
+  session, companies, project, projects, view, signing, target, restoreSession, signOut
 } = useWorkspace()
 const open = ref(false)
 const route = useRoute()
@@ -48,7 +48,10 @@ function entered() {
 const links = computed<NavigationMenuItem[]>(() => ([
   { label: 'Overview', icon: 'i-lucide-house', to: target('overview'), active: view.value === 'overview' },
   { label: 'Observations', icon: 'i-lucide-clipboard-list', to: target('observations'), active: view.value === 'observations' },
-  { label: 'Change cases', icon: 'i-lucide-folders', to: target('cases'), active: view.value === 'cases' }
+  { label: 'Change cases', icon: 'i-lucide-folders', to: target('cases'), active: view.value === 'cases' },
+  ...(companies.value.some(company => company.role === 'admin')
+    ? [{ label: 'Company settings', icon: 'i-lucide-building-2', to: target('company'), active: view.value === 'company' }]
+    : [])
 ].map(item => ({ ...item, onSelect: () => { open.value = false } }))))
 const groups = computed(() => [{
   id: 'links',
@@ -58,7 +61,7 @@ const groups = computed(() => [{
 
 async function selectProject(id: string) {
   open.value = false
-  await navigateTo(target(view.value, id))
+  await navigateTo(target(view.value === 'company' ? 'overview' : view.value, id))
 }
 
 function readInvitation(hash: string) {

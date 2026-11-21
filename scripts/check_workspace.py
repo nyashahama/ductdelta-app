@@ -65,7 +65,7 @@ class Workspace:
 
 
 @contextmanager
-def workspace(port=None, *, backup=None, frontend=None, seed=True):
+def workspace(port=None, *, backup=None, frontend=None, seed=True, seed_before=None):
     target = ROOT / "target"
     subprocess.run(["cargo", "build", "--locked", "--target-dir", target], cwd=ROOT, check=True)
     environment = {key: value for key, value in os.environ.items() if not key.startswith(("PG", "DUCTDELTA_"))}
@@ -77,8 +77,10 @@ def workspace(port=None, *, backup=None, frontend=None, seed=True):
         server = Workspace(database_socket, port, environment)
         if backup is None:
             for migration in sorted((ROOT / "migrations").glob("*.sql")):
+                if seed and migration.name == seed_before:
+                    server.sql((ROOT / "tests/fixture.sql").read_text())
                 server.sql(migration.read_text())
-            if seed:
+            if seed and seed_before is None:
                 server.sql((ROOT / "tests/fixture.sql").read_text())
         else:
             server.sql(
@@ -171,17 +173,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serve", action="store_true", help="leave a synthetic workspace available on loopback")
     parser.add_argument("--port", type=int)
+    parser.add_argument("--empty", action="store_true", help="start without sample companies or sign-in keys")
     parser.add_argument("--frontend", type=Path, default=ROOT / "frontend/.output/public")
     args = parser.parse_args()
+    if args.empty and not args.serve:
+        parser.error("--empty requires --serve.")
     if args.serve and not (args.frontend / "index.html").is_file():
         parser.error("Run pnpm install --frozen-lockfile and pnpm build in frontend before starting the workspace.")
-    with workspace(args.port, frontend=args.frontend.resolve() if args.serve else None) as server:
-        verify(server)
+    with workspace(args.port, frontend=args.frontend.resolve() if args.serve else None,
+                   seed=not args.empty) as server:
+        if not args.empty:
+            verify(server)
         if args.serve:
-            if server.sql("SELECT to_regclass('ductdelta.project_workflow_grant')"):
+            print(f"Workspace: {server.origin}", flush=True)
+            if not args.empty:
                 grant_demo_capabilities(server)
-            key = server.key(REPORTER, "Site reporter")
-            print(f"Workspace: {server.origin}\nSynthetic access key: {key}", flush=True)
+                print(f"Synthetic access key: {server.key(REPORTER, 'Site reporter')}", flush=True)
             while True:
                 time.sleep(1)
 
