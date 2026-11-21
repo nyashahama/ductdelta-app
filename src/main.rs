@@ -1,4 +1,5 @@
 mod cases;
+mod company_setup;
 mod evidence;
 mod frontend;
 mod observation;

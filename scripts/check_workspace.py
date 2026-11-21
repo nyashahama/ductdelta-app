@@ -65,7 +65,7 @@ class Workspace:
 
 
 @contextmanager
-def workspace(port=None, *, backup=None, frontend=None):
+def workspace(port=None, *, backup=None, frontend=None, seed=True):
     target = ROOT / "target"
     subprocess.run(["cargo", "build", "--locked", "--target-dir", target], cwd=ROOT, check=True)
     environment = {key: value for key, value in os.environ.items() if not key.startswith(("PG", "DUCTDELTA_"))}
@@ -78,7 +78,8 @@ def workspace(port=None, *, backup=None, frontend=None):
         if backup is None:
             for migration in sorted((ROOT / "migrations").glob("*.sql")):
                 server.sql(migration.read_text())
-            server.sql((ROOT / "tests/fixture.sql").read_text())
+            if seed:
+                server.sql((ROOT / "tests/fixture.sql").read_text())
         else:
             server.sql(
                 "CREATE ROLE ductdelta_owner NOLOGIN;"
