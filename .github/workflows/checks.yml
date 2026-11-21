@@ -84,6 +84,7 @@ jobs:
           python3 scripts/check_company_team.py
           python3 scripts/check_workflow.py
           python3 scripts/check_case_http.py
+          python3 scripts/check_disputed_closeout.py
           python3 scripts/check_case_evidence.py
           python3 scripts/check_evidence_http.py
           python3 scripts/check_overview.py

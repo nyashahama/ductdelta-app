@@ -11,7 +11,8 @@ export const actions = {
   receipt: { label: 'Record cash receipt', grant: 'finance', event: 'Receipt' },
   allocate: { label: 'Allocate receipt', grant: 'finance', event: 'Receipt allocation' },
   reverse_allocation: { label: 'Reverse allocation', grant: 'finance', event: 'Allocation reversal' },
-  close: { label: 'Close case', grant: 'commercial', event: 'Closeout' }
+  close: { label: 'Close case', grant: 'commercial', event: 'Closeout' },
+  reopen: { label: 'Reopen case', grant: 'commercial', event: 'Case reopened' }
 } as const
 
 export const moneyLabels = {
@@ -32,7 +33,7 @@ type Capability = 'direction' | 'commercial' | 'finance'
 type Disposition = (typeof dispositions)[number][0]
 type Outcome = (typeof outcomes)[number][0]
 export type MoneyField = keyof typeof moneyLabels
-export type FinancialPosition = Record<MoneyField, string | null> & { currency: string, basis: string, quote_awaiting_decision?: boolean }
+export type FinancialPosition = Record<MoneyField, string | null> & { currency: string, basis: string, unresolved_lines?: number, quote_awaiting_decision?: boolean }
 
 export type QuoteLine = { description: string, amount: string }
 type DecisionLine = { line: number, accepted: string, disposition: Disposition }
@@ -53,6 +54,7 @@ type EventPayload = {
   allocate: Reference & { receipt: string, certificate: string, amount: string }
   reverse_allocation: Reason & { allocation: string }
   close: Reason & { outcome: Outcome }
+  reopen: Reason
 }
 
 export type CaseEvent = {
@@ -101,6 +103,7 @@ export function availableActions(record: CaseRecord, permission: 'read' | 'captu
     const { grant } = actions[kind]
     if (!grants.has(grant)) return false
     if (kind === 'reverse_allocation') return unreversedAllocations(record).length > 0
+    if (kind === 'reopen') return record.closed
     if (record.closed) return false
     if (kind === 'notice_dispatch') return eventsOf(record, 'notice').length > 0
     if (kind === 'notice_receipt') return eventsOf(record, 'notice_dispatch').length > 0
