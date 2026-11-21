@@ -257,6 +257,61 @@ def run(socket, auth_migration):
     assert detail(case=no_change_case)["closed"]
     print("PASS: quote decisions, cumulative certificates, retention, split cash, closeout and reversal")
 
+    # A new proposal does not erase the current agreement or settle the new proposal.
+    grant = ("INSERT INTO ductdelta.project_workflow_grant "
+             "(organization_id, project_id, actor_id, capability) SELECT organization_id, "
+             "project_id, actor_id, 'direction' FROM ductdelta.project_member "
+             f"WHERE project_id = '{PROJECT}' AND permission = 'capture'")
+    admin(grant)
+    revised_case = create("One case with revised pricing and separate scope", op=str(uuid.uuid4()))
+    instruction_payload = {"reference": "I-01", "agreement": "A-01", "scope": "First scope"}
+    first_instruction = action("instruction", instruction_payload, case=revised_case)
+    second_instruction = action(
+        "instruction", {**instruction_payload, "reference": "I-02", "scope": "Second scope"},
+        case=revised_case,
+    )
+    action("work", {"description": "First scope complete", "completed": True,
+                    "instruction": first_instruction}, case=revised_case)
+    action("work", {"description": "Second scope complete", "completed": True,
+                    "instruction": second_instruction}, case=revised_case)
+
+    def proposed(reference, amount):
+        return action("quote", {"reference": reference,
+                                "lines": [{"description": "Scope price", "amount": amount}]},
+                      case=revised_case)
+
+    def decide(quote, amount, disposition):
+        action("decision", {"quote": quote, "reason": "Written decision",
+                            "lines": [{"line": 1, "accepted": amount, "disposition": disposition}]},
+               case=revised_case)
+
+    initial_quote = proposed("Q-01", "10.00")
+    decide(initial_quote, "0.00", "waived")
+    next_quote = proposed("Q-02", "20.00")
+    before_decision = detail(case=revised_case)["financial"]
+    assert before_decision["proposed"] == "20.00"
+    assert before_decision["agreed"] == "0.00", before_decision
+    assert before_decision["quote_awaiting_decision"] is True
+    action("close", close_payload, case=revised_case, error="23514")
+
+    decide(next_quote, "0.00", "waived")
+    assert detail(case=revised_case)["financial"]["quote_awaiting_decision"] is False
+
+    # Completion is evaluated by written direction. A later complete record for
+    # the second instruction cannot settle the first instruction.
+    action("work", {"description": "First scope still needs rework", "completed": False,
+                    "instruction": first_instruction}, case=revised_case)
+    action("work", {"description": "Second scope passed checks", "completed": True,
+                    "instruction": second_instruction}, case=revised_case)
+    action("close", close_payload, case=revised_case, error="23514")
+    action("work", {"description": "First scope rework complete", "completed": True,
+                    "instruction": first_instruction}, case=revised_case)
+    action("work", {"description": "Separate factual visit", "completed": False}, case=revised_case)
+    action("close", close_payload, case=revised_case)
+    assert detail(case=revised_case)["closed"]
+    print("PASS: revised pricing and completion independently reconcile before closeout")
+
+
 
 
 if __name__ == "__main__":

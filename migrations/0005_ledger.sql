@@ -66,7 +66,7 @@ CREATE FUNCTION ductdelta.case_totals(requested_case uuid)
 RETURNS TABLE (
     proposed numeric, agreed numeric, unresolved numeric, unresolved_lines bigint,
     certified numeric, retained numeric, payable numeric, matched numeric,
-    outstanding numeric, unallocated numeric
+    outstanding numeric, unallocated numeric, quote_awaiting_decision boolean
 )
 LANGUAGE sql STABLE
 SET search_path = pg_catalog, pg_temp
@@ -75,10 +75,10 @@ AS $$
         SELECT id, data FROM ductdelta.case_event
         WHERE case_id = requested_case AND kind = 'quote'
         ORDER BY sequence DESC LIMIT 1
-    ), current_decision AS (
-        SELECT decision.data
-        FROM ductdelta.case_event AS decision JOIN current_quote AS quote ON quote.id = decision.subject_id
-        WHERE decision.case_id = requested_case AND decision.kind = 'decision'
+    ), effective_decision AS (
+        -- Only a later decision replaces the currently agreed amounts.
+        SELECT subject_id AS quote_id, data FROM ductdelta.case_event
+        WHERE case_id = requested_case AND kind = 'decision'
         ORDER BY sequence DESC LIMIT 1
     ), proposal AS (
         SELECT sum(ductdelta.case_money(line, 'amount')) AS amount
@@ -90,9 +90,9 @@ AS $$
                      - ductdelta.case_money(line, 'accepted')
                 ELSE 0.00 END) AS unresolved,
             count(*) FILTER (WHERE line ->> 'disposition' IN ('open', 'disputed')) AS unresolved_lines
-        FROM current_decision
-        CROSS JOIN LATERAL jsonb_array_elements(current_decision.data -> 'lines') AS line
-        CROSS JOIN current_quote AS quote
+        FROM effective_decision
+        JOIN ductdelta.case_event AS quote ON quote.id = effective_decision.quote_id
+        CROSS JOIN LATERAL jsonb_array_elements(effective_decision.data -> 'lines') AS line
     ), certification AS (
         SELECT coalesce(sum(work_delta), 0.00) AS certified,
             coalesce(sum(withheld - released), 0.00) AS retained,
@@ -107,7 +107,11 @@ AS $$
     )
     SELECT proposal.amount, agreement.amount, agreement.unresolved, agreement.unresolved_lines,
         certification.certified, certification.retained, certification.payable, allocation.matched,
-        certification.payable - allocation.matched, cash.received - allocation.matched
+        certification.payable - allocation.matched, cash.received - allocation.matched,
+        EXISTS (
+            SELECT FROM current_quote
+            WHERE id IS DISTINCT FROM (SELECT quote_id FROM effective_decision)
+        )
     FROM proposal CROSS JOIN agreement CROSS JOIN certification CROSS JOIN cash CROSS JOIN allocation;
 $$;
 
@@ -118,6 +122,7 @@ AS $$
     SELECT jsonb_build_object(
         'currency', 'ZAR', 'basis', 'excl_vat',
         'proposed', proposed::text, 'agreed', agreed::text, 'unresolved', unresolved::text,
+        'quote_awaiting_decision', quote_awaiting_decision,
         'certified', certified::text, 'retained', retained::text, 'payable', payable::text,
         'matched', matched::text, 'outstanding', outstanding::text,
         'unallocated', CASE WHEN bank_access THEN unallocated::text END
@@ -244,11 +249,20 @@ BEGIN
     END IF;
 
     IF NOT coalesce((
-        SELECT (data ->> 'completed')::boolean AND subject_id IS NOT NULL
-        FROM ductdelta.case_event WHERE case_id = item.id AND kind = 'work'
-        ORDER BY sequence DESC LIMIT 1
+        SELECT bool_and(latest.completed IS TRUE)
+        FROM ductdelta.case_event AS instruction
+        LEFT JOIN (
+            SELECT DISTINCT ON (subject_id) subject_id, (data ->> 'completed')::boolean AS completed
+            FROM ductdelta.case_event
+            WHERE case_id = item.id AND kind = 'work' AND subject_id IS NOT NULL
+            ORDER BY subject_id, sequence DESC
+        ) AS latest ON latest.subject_id = instruction.id
+        WHERE instruction.case_id = item.id AND instruction.kind = 'instruction'
     ), false) THEN
-        RAISE EXCEPTION 'Record completed work and its direction' USING ERRCODE = '23514';
+        RAISE EXCEPTION 'Record completed work for each direction' USING ERRCODE = '23514';
+    END IF;
+    IF totals.quote_awaiting_decision THEN
+        RAISE EXCEPTION 'Record the latest quote decision before closing the case' USING ERRCODE = '23514';
     END IF;
     IF totals.agreed IS NULL OR totals.unresolved_lines > 0 OR totals.agreed <> totals.certified
        OR totals.retained <> 0 OR totals.outstanding <> 0 OR totals.unallocated <> 0 THEN
