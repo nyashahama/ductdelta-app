@@ -138,16 +138,18 @@ BEGIN
     -- Read permissions, timeline and totals from the same statement snapshot.
     SELECT jsonb_build_object('id', item.id, 'title', item.title, 'closed', item.closeout_id IS NOT NULL,
         'observation_id', item.observation_id, 'agreement', item.agreement,
+        'capabilities', access.capabilities,
         'events', ductdelta.case_timeline(item.id, access.financial, access.bank),
         'financial', CASE WHEN access.financial THEN ductdelta.case_financial(item.id, access.bank) END)
     INTO result
     FROM ductdelta.change_case AS item
     CROSS JOIN LATERAL (
-        SELECT count(*) > 0 AS financial, count(*) FILTER (WHERE capability = 'finance') > 0 AS bank
+        SELECT coalesce(jsonb_agg(capability ORDER BY capability), '[]'::jsonb) AS capabilities,
+               count(*) FILTER (WHERE capability IN ('commercial', 'finance')) > 0 AS financial,
+               count(*) FILTER (WHERE capability = 'finance') > 0 AS bank
         FROM ductdelta.project_workflow_grant
         WHERE (organization_id, project_id, actor_id) =
               (item.organization_id, item.project_id, member.actor_id)
-          AND capability IN ('commercial', 'finance')
     ) AS access
     WHERE (item.organization_id, item.project_id, item.id) =
           (member.organization_id, member.project_id, requested_case);
