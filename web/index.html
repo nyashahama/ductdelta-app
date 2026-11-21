@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>DuctDelta workspace</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script defer src="/assets/workspace.js"></script>
+</head>
+<body>
+  <p id="startup" class="startup" role="status">Opening DuctDelta…</p>
+
+  <main id="sign-in" class="entry" hidden>
+    <section class="entry-card" aria-labelledby="sign-in-title">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">Δ</span> DuctDelta</div>
+      <h1 id="sign-in-title">Sign in to your workspace</h1>
+      <p class="support">Use your access key to open your assigned projects.</p>
+      <form id="sign-in-form" class="form">
+        <label for="access-key">Access key</label>
+        <input id="access-key" name="key" type="password" autocomplete="current-password"
+          required autocapitalize="off" spellcheck="false">
+        <p id="sign-in-error" class="error" role="alert" hidden></p>
+        <button type="submit" class="button primary">Sign in</button>
+      </form>
+    </section>
+  </main>
+
+  <div id="workspace" class="shell" hidden>
+    <a class="skip-link" href="#workspace-content">Skip to workspace</a>
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">Δ</span> DuctDelta</div>
+      <div class="sidebar-project">
+        <label for="project">Project</label>
+        <select id="project" disabled>
+          <option>Loading projects…</option>
+        </select>
+      </div>
+      <nav id="workspace-nav" aria-label="Workspace">
+        <a href="#observations-view" aria-current="page" id="observations-nav">
+          <span class="nav-mark" aria-hidden="true"></span> Observations
+        </a>
+      </nav>
+    </aside>
+
+    <div class="shell-main">
+      <header class="topbar">
+        <p id="workspace-project" class="topbar-project"></p>
+        <div class="account">
+          <span id="account-name"></span>
+          <button class="button sign-out" id="sign-out" type="button">Sign out</button>
+        </div>
+      </header>
+
+      <main id="workspace-content" class="content" tabindex="-1">
+        <p id="workspace-error" class="error banner" role="alert" hidden></p>
+        <button class="button secondary" id="retry-projects" type="button" hidden>Retry loading projects</button>
+        <section id="observations-view" aria-labelledby="observations-title">
+          <div class="page-heading">
+            <div>
+              <h1 id="observations-title">Observations</h1>
+              <p class="support">Record and review possible site changes.</p>
+            </div>
+            <button class="button primary" id="new-observation" type="button" hidden>
+              <span class="add-symbol" aria-hidden="true">+</span> New observation
+            </button>
+          </div>
+          <div class="workspace-grid">
+            <section class="pane queue" aria-labelledby="queue-title">
+              <div class="pane-heading">
+                <h2 id="queue-title">Observation log</h2>
+                <span id="queue-count" class="count" hidden></span>
+              </div>
+              <p id="log-status" class="pane-message support" role="status">Select a project to view its observations.</p>
+              <div id="queue-table" hidden>
+                <table>
+                  <thead><tr><th scope="col">Observation</th><th scope="col">Recorded</th></tr></thead>
+                  <tbody id="observation-rows"></tbody>
+                </table>
+              </div>
+              <p id="log-error" class="error pane-message" role="alert" hidden></p>
+              <div id="log-footer" class="pane-footer" hidden>
+                <button class="button secondary" id="load-more" type="button" hidden>Load earlier observations</button>
+                <button class="button secondary" id="retry-log" type="button" hidden>Retry loading observations</button>
+              </div>
+            </section>
+
+            <section id="observation-detail" class="pane detail" aria-labelledby="detail-title">
+              <div class="pane-heading detail-heading">
+                <h2 id="detail-title" tabindex="-1">Observation record</h2>
+                <span id="detail-tag" class="tag" hidden>Site observation</span>
+              </div>
+              <p id="detail-status" class="pane-message support" role="status">Select an observation to open its full record.</p>
+              <p id="detail-error" class="error pane-message" role="alert" hidden></p>
+              <div id="detail-body" class="detail-body" hidden>
+                <h3>Note</h3>
+                <p id="detail-note" class="record-note"></p>
+                <dl class="record-data">
+                  <div><dt>Location</dt><dd id="detail-location"></dd></div>
+                  <div><dt>Observed</dt><dd id="detail-observed"></dd></div>
+                  <div><dt>Recorded</dt><dd id="detail-recorded"></dd></div>
+                  <div><dt>Recorded by</dt><dd id="detail-actor"></dd></div>
+                  <div><dt>Record ID</dt><dd id="detail-id"></dd></div>
+                </dl>
+              </div>
+            </section>
+          </div>
+          <p id="save-status" class="sr-only" role="status"></p>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <dialog id="capture-dialog" aria-labelledby="capture-title">
+    <div class="dialog-heading">
+      <h2 id="capture-title">New observation</h2>
+      <p id="capture-project" class="support"></p>
+    </div>
+    <form id="capture-form" class="form">
+      <fieldset id="capture-fields">
+        <div class="field">
+          <label for="capture-note">Observation</label>
+          <textarea id="capture-note" name="note" rows="5" maxlength="4000" required autofocus></textarea>
+        </div>
+        <div class="field">
+          <label for="capture-location">Location <span class="optional">optional</span></label>
+          <input id="capture-location" name="location" maxlength="120" type="text">
+        </div>
+        <div class="field">
+          <label for="capture-observed">Time observed <span class="optional">optional</span></label>
+          <input id="capture-observed" name="observed_at" type="datetime-local" aria-describedby="observed-help">
+          <p id="observed-help" class="support">Uses the time zone on this device.</p>
+        </div>
+      </fieldset>
+      <p id="capture-error" class="error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button id="cancel-capture" class="button secondary" type="button">Cancel</button>
+        <button id="save-capture" class="button primary" type="submit">Save observation</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
