@@ -21,9 +21,9 @@ type ObservationPage = {
 
 const props = defineProps<{ project: Project, observationId?: string, version: number }>()
 const emit = defineEmits<{
-  select: [id: string]
+  'select': [id: string]
   'source-case': [id: string]
-  capture: []
+  'capture': []
   'session-expired': []
 }>()
 
@@ -115,12 +115,8 @@ async function loadOlder() {
 
 <template>
   <div class="min-w-0 space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <h1 class="text-2xl font-semibold text-highlighted">
-        Observations
-      </h1>
+    <div v-if="captureAllowed" class="flex justify-end">
       <UButton
-        v-if="captureAllowed"
         type="button"
         icon="i-lucide-file-plus-2"
         label="New observation"
@@ -218,26 +214,36 @@ async function loadOlder() {
           </p>
           <dl class="grid gap-3 text-sm wrap-anywhere sm:grid-cols-2">
             <div>
-              <dt class="text-muted">Location</dt>
+              <dt class="text-muted">
+                Location
+              </dt>
               <dd>{{ detail.location || 'Not recorded' }}</dd>
             </div>
             <div>
-              <dt class="text-muted">Observed</dt>
+              <dt class="text-muted">
+                Observed
+              </dt>
               <dd>
                 <time v-if="detail.observed_at" :datetime="detail.observed_at">{{ displayTimestamp(detail.observed_at) }}</time>
                 <span v-else>Not recorded</span>
               </dd>
             </div>
             <div>
-              <dt class="text-muted">Recorded</dt>
+              <dt class="text-muted">
+                Recorded
+              </dt>
               <dd><time :datetime="detail.recorded_at">{{ displayTimestamp(detail.recorded_at) }}</time></dd>
             </div>
             <div>
-              <dt class="text-muted">Recorded by</dt>
+              <dt class="text-muted">
+                Recorded by
+              </dt>
               <dd>{{ detail.actor_id }}</dd>
             </div>
             <div>
-              <dt class="text-muted">Record ID</dt>
+              <dt class="text-muted">
+                Record ID
+              </dt>
               <dd>{{ detail.id }}</dd>
             </div>
           </dl>

@@ -1,16 +1,18 @@
 import { computed, onMounted, onScopeDispose, ref, shallowRef, toValue, watchEffect, type MaybeRefOrGetter } from 'vue'
 import { api, reportError } from '../../utils/api'
 
-type Resource<T> =
-  | { kind: 'loading' }
-  | { kind: 'ready', data: T }
-  | { kind: 'error', message: string }
+type Resource<T>
+  = | { kind: 'loading' }
+    | { kind: 'ready', data: T }
+    | { kind: 'error', message: string }
 
 export function useCaseResource<T>(path: MaybeRefOrGetter<string | null>, expire: () => void) {
   const started = ref(false)
   const version = ref(0)
   const result = shallowRef<{ path: string, version: number, resource: Resource<T> } | null>(null)
-  onMounted(() => { started.value = true })
+  onMounted(() => {
+    started.value = true
+  })
 
   watchEffect((cleanup) => {
     const endpoint = toValue(path)
@@ -31,11 +33,16 @@ export function useCaseResource<T>(path: MaybeRefOrGetter<string | null>, expire
     const entry = result.value
     return entry && entry.path === toValue(path) && entry.version === version.value ? entry.resource : { kind: 'loading' }
   })
-  return { resource, reload: () => { version.value++ } }
+  function reload() {
+    version.value++
+  }
+  return { resource, reload }
 }
 
 export function useActiveScope() {
   let active = true
-  onScopeDispose(() => { active = false })
+  onScopeDispose(() => {
+    active = false
+  })
   return () => active
 }

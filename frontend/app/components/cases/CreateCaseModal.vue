@@ -5,7 +5,7 @@ import { casePath, retryOperation, type Operation } from './case-data'
 import { useActiveScope } from './useCaseResource'
 
 const props = defineProps<{ project: Project, sourceId: string | null }>()
-const emit = defineEmits<{ dismiss: [], created: [id: string], 'session-expired': [] }>()
+const emit = defineEmits<{ 'dismiss': [], 'created': [id: string], 'session-expired': [] }>()
 const title = ref('')
 const busy = ref(false)
 const error = ref('')
@@ -46,13 +46,27 @@ async function save() {
     <template #body>
       <form class="space-y-4" @submit.prevent="save">
         <UFormField label="Case title" name="title" required>
-          <UInput v-model="title" class="w-full" name="title" aria-label="Case title" required :maxlength="160" :readonly="busy" autofocus />
+          <UInput
+            v-model="title"
+            class="w-full"
+            name="title"
+            aria-label="Case title"
+            required
+            :maxlength="160"
+            :readonly="busy"
+            autofocus
+          />
         </UFormField>
         <p v-if="error" role="alert" class="text-sm text-error">
           {{ error }}
         </p>
         <div class="flex flex-wrap justify-end gap-2">
-          <UButton color="neutral" variant="outline" :disabled="busy" @click="emit('dismiss')">
+          <UButton
+            color="neutral"
+            variant="outline"
+            :disabled="busy"
+            @click="emit('dismiss')"
+          >
             Cancel
           </UButton>
           <UButton type="submit" :loading="busy">

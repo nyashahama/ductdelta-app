@@ -15,7 +15,7 @@ type CaseFile = {
 }
 
 const props = defineProps<{ path: string, record: CaseRecord, permission: 'read' | 'capture' }>()
-const emit = defineEmits<{ changed: [], 'session-expired': [] }>()
+const emit = defineEmits<{ 'changed': [], 'session-expired': [] }>()
 const extensions: Partial<Record<string, string>> = {
   pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', txt: 'text/plain'
 }
@@ -170,14 +170,27 @@ async function save() {
               aria-describedby="case-upload-help"
               accept=".pdf,.png,.jpg,.jpeg,.txt,application/pdf,image/png,image/jpeg,text/plain"
             >
-            <p id="case-upload-help" class="text-muted">PDF, PNG, JPEG or TXT. Maximum 5 MiB.</p>
+            <p id="case-upload-help" class="text-muted">
+              PDF, PNG, JPEG or TXT. Maximum 5 MiB.
+            </p>
           </div>
           <div class="grid gap-3 sm:grid-cols-2">
             <UFormField label="Caption" hint="Optional">
-              <UInput v-model="caption" class="w-full" aria-label="Caption" :disabled="busy" />
+              <UInput
+                v-model="caption"
+                class="w-full"
+                aria-label="Caption"
+                :disabled="busy"
+              />
             </UFormField>
             <UFormField label="File visibility">
-              <USelect v-model="access" class="w-full" aria-label="File visibility" :items="choices" :disabled="busy" />
+              <USelect
+                v-model="access"
+                class="w-full"
+                aria-label="File visibility"
+                :items="choices"
+                :disabled="busy"
+              />
             </UFormField>
           </div>
         </fieldset>

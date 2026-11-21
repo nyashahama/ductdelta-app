@@ -3,8 +3,8 @@ import { api, reportError, requestJson, type Project } from '~/utils/api'
 
 const props = defineProps<{ project: Project }>()
 const emit = defineEmits<{
-  close: []
-  saved: [id: string]
+  'close': []
+  'saved': [id: string]
   'session-expired': []
 }>()
 
@@ -90,7 +90,15 @@ async function save() {
       <form class="space-y-4" @submit.prevent="save">
         <fieldset :disabled="pending" class="space-y-4">
           <UFormField label="Observation" name="note" required>
-            <UTextarea v-model="note" class="w-full" required autofocus :rows="4" :maxlength="4000" />
+            <UTextarea
+              v-model="note"
+              aria-label="Observation"
+              class="w-full"
+              required
+              autofocus
+              :rows="4"
+              :maxlength="4000"
+            />
           </UFormField>
           <UFormField label="Location" name="location">
             <UInput v-model="location" class="w-full" :maxlength="120" />
@@ -108,7 +116,14 @@ async function save() {
           {{ error }}
         </p>
         <div class="flex flex-wrap justify-end gap-2">
-          <UButton type="button" label="Cancel" color="neutral" variant="outline" :disabled="pending" @click="close" />
+          <UButton
+            type="button"
+            label="Cancel"
+            color="neutral"
+            variant="outline"
+            :disabled="pending"
+            @click="close"
+          />
           <UButton type="submit" label="Save observation" :loading="pending" />
         </div>
       </form>

@@ -48,7 +48,9 @@ watch(() => props.project.id, () => {
 watch(() => props.sourceObservationId, (id) => {
   if (id === null) dismissedSource.value = null
 })
-watch(() => props.selectedCaseId, () => { confirmation.value = '' })
+watch(() => props.selectedCaseId, () => {
+  confirmation.value = ''
+})
 
 let focusedCase: string | null = null
 watch(record, async (current) => {
@@ -94,22 +96,19 @@ function savedAction() {
 
 <template>
   <section class="min-w-0 space-y-4" aria-label="Change cases">
-    <header class="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight text-highlighted">
-          Change cases
-        </h1>
-        <p class="mt-1 text-sm text-muted">
-          Track changes from instruction through payment.
-        </p>
-      </div>
-      <UButton v-if="canCreate" icon="i-lucide-plus" @click="newCase = true">
+    <header v-if="canCreate" class="flex justify-end">
+      <UButton icon="i-lucide-plus" @click="newCase = true">
         New case
       </UButton>
     </header>
 
     <div class="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(12rem,1fr)_minmax(0,3fr)]">
-      <UCard as="section" class="min-w-0" aria-label="Case register" :ui="{ header: 'px-4 py-3 sm:px-4', body: 'p-0 sm:p-0' }">
+      <UCard
+        as="section"
+        class="min-w-0"
+        aria-label="Case register"
+        :ui="{ header: 'px-4 py-3 sm:px-4', body: 'p-0 sm:p-0' }"
+      >
         <template #header>
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h2 class="font-semibold text-highlighted">
@@ -132,7 +131,9 @@ function savedAction() {
               @click="emit('select-case', item.id)"
             >
               <span class="min-w-0 font-medium wrap-anywhere text-highlighted">{{ item.title }}</span>
-              <UBadge :color="item.closed ? 'neutral' : 'primary'" variant="subtle">{{ item.closed ? 'Closed' : 'Open' }}</UBadge>
+              <UBadge :color="item.closed ? 'neutral' : 'primary'" variant="subtle">
+                {{ item.closed ? 'Closed' : 'Open' }}
+              </UBadge>
             </button>
           </li>
         </ul>
@@ -159,13 +160,19 @@ function savedAction() {
 
       <div class="min-w-0 space-y-4">
         <UCard v-if="!selectedCaseId" :ui="{ body: 'p-4 sm:p-4' }">
-          <p class="text-sm text-muted">Select a case to open its record.</p>
+          <p class="text-sm text-muted">
+            Select a case to open its record.
+          </p>
         </UCard>
         <UCard v-else-if="detail.kind === 'loading'" :ui="{ body: 'p-4 sm:p-4' }">
-          <p class="text-sm text-muted" role="status">Loading case record…</p>
+          <p class="text-sm text-muted" role="status">
+            Loading case record…
+          </p>
         </UCard>
         <UCard v-else-if="detail.kind === 'error'" :ui="{ body: 'space-y-3 p-4 sm:p-4' }">
-          <p class="text-sm text-error" role="alert">{{ detail.message }}</p>
+          <p class="text-sm text-error" role="alert">
+            {{ detail.message }}
+          </p>
           <UButton color="neutral" variant="outline" @click="reloadDetail">
             Reload case record
           </UButton>
@@ -182,12 +189,20 @@ function savedAction() {
             </div>
             <dl class="flex flex-wrap gap-x-5 gap-y-2 text-sm">
               <div>
-                <dt class="text-xs text-muted">Agreement</dt>
-                <dd class="font-medium wrap-anywhere">{{ record.agreement ?? 'Not recorded' }}</dd>
+                <dt class="text-xs text-muted">
+                  Agreement
+                </dt>
+                <dd class="font-medium wrap-anywhere">
+                  {{ record.agreement ?? 'Not recorded' }}
+                </dd>
               </div>
               <div class="min-w-0">
-                <dt class="text-xs text-muted">Case ID</dt>
-                <dd class="font-medium wrap-anywhere">{{ record.id }}</dd>
+                <dt class="text-xs text-muted">
+                  Case ID
+                </dt>
+                <dd class="font-medium wrap-anywhere">
+                  {{ record.id }}
+                </dd>
               </div>
             </dl>
             <UButton
@@ -200,7 +215,9 @@ function savedAction() {
               Open source observation
             </UButton>
           </UCard>
-          <p v-if="confirmation" class="text-sm text-muted" role="status">{{ confirmation }}</p>
+          <p v-if="confirmation" class="text-sm text-muted" role="status">
+            {{ confirmation }}
+          </p>
           <CaseFinance v-if="record.financial" :value="record.financial" />
           <CaseFiles
             :key="selectedPath + record.capabilities.join('|')"
@@ -210,7 +227,7 @@ function savedAction() {
             @changed="emit('changed')"
             @session-expired="expire"
           />
-          <div class="case-activity grid min-w-0 items-start gap-4 2xl:grid-cols-2">
+          <div class="grid min-w-0 items-start gap-4 2xl:grid-cols-2 [&>:only-child]:col-span-full">
             <CaseActions
               :key="selectedPath"
               :path="selectedPath"
@@ -236,9 +253,3 @@ function savedAction() {
     />
   </section>
 </template>
-
-<style scoped>
-.case-activity > :only-child {
-  grid-column: 1 / -1;
-}
-</style>

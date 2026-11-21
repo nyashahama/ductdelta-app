@@ -27,7 +27,8 @@ function fieldValue(key: string, value: unknown) {
 function visibleFields(event: CaseEvent) {
   const data: Record<string, unknown> = event.data
   const content = Object.entries(eventLabels).flatMap(([key, label]) => data[key] == null
-    ? [] : [{ id: key, label, value: fieldValue(key, data[key]) }])
+    ? []
+    : [{ id: key, label, value: fieldValue(key, data[key]) }])
   for (const [key, value] of Object.entries(event.data.financial_snapshot ?? {})) {
     const label = key === 'work_delta' ? 'Certified this period' : moneyLabels[key as MoneyField]
     if (label && value != null) content.push({ id: 'snapshot-' + key, label, value: formatDecimal(value) })
@@ -66,28 +67,50 @@ function visibleFields(event: CaseEvent) {
           <div v-if="event.kind === 'quote' || event.kind === 'decision'" class="mt-3 overflow-x-auto">
             <table v-if="event.kind === 'quote'" class="w-full min-w-48 text-left text-sm" aria-label="Quoted lines">
               <thead class="bg-elevated text-muted">
-                <tr><th scope="col" class="px-2 py-1.5">Description</th><th scope="col" class="px-2 py-1.5">Amount</th></tr>
+                <tr>
+                  <th scope="col" class="px-2 py-1.5">
+                    Description
+                  </th><th scope="col" class="px-2 py-1.5">
+                    Amount
+                  </th>
+                </tr>
               </thead>
               <tbody class="divide-y divide-default">
                 <tr v-for="(line, index) in event.data.lines" :key="index">
-                  <td class="px-2 py-1.5 wrap-anywhere">{{ line.description }}</td>
-                  <td class="px-2 py-1.5 tabular-nums">{{ formatDecimal(line.amount) }}</td>
+                  <td class="px-2 py-1.5 wrap-anywhere">
+                    {{ line.description }}
+                  </td>
+                  <td class="px-2 py-1.5 tabular-nums">
+                    {{ formatDecimal(line.amount) }}
+                  </td>
                 </tr>
               </tbody>
             </table>
             <table v-else class="w-full min-w-48 text-left text-sm" aria-label="Decision by line">
               <thead class="bg-elevated text-muted">
                 <tr>
-                  <th scope="col" class="px-2 py-1.5">Line</th>
-                  <th scope="col" class="px-2 py-1.5">Accepted</th>
-                  <th scope="col" class="px-2 py-1.5">Disposition</th>
+                  <th scope="col" class="px-2 py-1.5">
+                    Line
+                  </th>
+                  <th scope="col" class="px-2 py-1.5">
+                    Accepted
+                  </th>
+                  <th scope="col" class="px-2 py-1.5">
+                    Disposition
+                  </th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-default">
                 <tr v-for="line in event.data.lines" :key="line.line">
-                  <td class="px-2 py-1.5">{{ line.line }}</td>
-                  <td class="px-2 py-1.5 tabular-nums">{{ formatDecimal(line.accepted) }}</td>
-                  <td class="px-2 py-1.5">{{ dispositions.find(([key]) => key === line.disposition)?.[1] ?? line.disposition }}</td>
+                  <td class="px-2 py-1.5">
+                    {{ line.line }}
+                  </td>
+                  <td class="px-2 py-1.5 tabular-nums">
+                    {{ formatDecimal(line.accepted) }}
+                  </td>
+                  <td class="px-2 py-1.5">
+                    {{ dispositions.find(([key]) => key === line.disposition)?.[1] ?? line.disposition }}
+                  </td>
                 </tr>
               </tbody>
             </table>

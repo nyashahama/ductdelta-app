@@ -7,7 +7,7 @@ import CaseActionField from './CaseActionField.vue'
 import { useActiveScope } from './useCaseResource'
 
 const props = defineProps<{ record: CaseRecord, permission: 'read' | 'capture', path: string }>()
-const emit = defineEmits<{ saved: [], 'session-expired': [] }>()
+const emit = defineEmits<{ 'saved': [], 'session-expired': [] }>()
 const kind = ref<ActionKind>()
 const error = ref('')
 const busy = ref(false)
@@ -56,19 +56,42 @@ async function save(event: SubmitEvent) {
 </script>
 
 <template>
-  <UCard v-if="choices.length" as="section" aria-label="Record an action" :ui="{ header: 'px-4 py-3 sm:px-4', body: 'px-4 py-4 sm:px-4' }">
+  <UCard
+    v-if="choices.length"
+    as="section"
+    aria-label="Record an action"
+    :ui="{ header: 'px-4 py-3 sm:px-4', body: 'px-4 py-4 sm:px-4' }"
+  >
     <template #header>
       <h3 class="font-semibold text-highlighted">
         Record an action
       </h3>
     </template>
     <UFormField label="Action">
-      <USelect v-model="kind" aria-label="Action" class="w-full" :items="choices" placeholder="Choose an action" :disabled="busy" />
+      <USelect
+        v-model="kind"
+        aria-label="Action"
+        class="w-full"
+        :items="choices"
+        placeholder="Choose an action"
+        :disabled="busy"
+      />
     </UFormField>
 
-    <form v-if="selected" :key="selected" class="mt-4 space-y-4" :aria-label="actions[selected].label" @submit.prevent="save">
+    <form
+      v-if="selected"
+      :key="selected"
+      class="mt-4 space-y-4"
+      :aria-label="actions[selected].label"
+      @submit.prevent="save"
+    >
       <fieldset class="min-w-0 space-y-4" :disabled="busy">
-        <CaseActionField v-for="field in fields" :key="field.name" :field="field" :disabled="busy" />
+        <CaseActionField
+          v-for="field in fields"
+          :key="field.name"
+          :field="field"
+          :disabled="busy"
+        />
 
         <template v-if="selected === 'quote'">
           <p class="text-sm text-muted">
@@ -117,14 +140,18 @@ async function save(event: SubmitEvent) {
             </p>
             <CaseActionField
               :field="{
-                name: 'accepted', label: `Accepted amount for line ${index + 1}`, input: 'money',
+                name: 'accepted',
+                label: `Accepted amount for line ${index + 1}`,
+                input: 'money',
                 value: currentDecision?.data.lines.find(item => item.line === index + 1)?.accepted ?? '0'
               }"
               :disabled="busy"
             />
             <CaseActionField
               :field="{
-                name: 'disposition', label: `Disposition for line ${index + 1}`, options: dispositionChoices,
+                name: 'disposition',
+                label: `Disposition for line ${index + 1}`,
+                options: dispositionChoices,
                 value: currentDecision?.data.lines.find(item => item.line === index + 1)?.disposition ?? 'open'
               }"
               :disabled="busy"

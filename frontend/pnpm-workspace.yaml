@@ -1,0 +1,34 @@
+allowBuilds:
+  '@parcel/watcher': false
+  '@tailwindcss/oxide': false
+  esbuild: false
+  unrs-resolver: false
+  vue-demi: false
+
+minimumReleaseAgeExclude:
+  - '@nuxt/ui'
+
+overrides:
+  js-yaml: 4.3.2
+  node-forge: 1.4.3
+  prosemirror-view: 1.42.3
+  shell-quote: 1.11.0
+  tar: 7.5.21
+  # Nuxt UI's Tiptap release uses exact matching peers across the editor family.
+  '@nuxt/ui>@tiptap/core': 3.33.0
+  '@nuxt/ui>@tiptap/extension-bubble-menu': 3.33.0
+  '@nuxt/ui>@tiptap/extension-code': 3.33.0
+  '@nuxt/ui>@tiptap/extension-collaboration': 3.33.0
+  '@nuxt/ui>@tiptap/extension-drag-handle': 3.33.0
+  '@nuxt/ui>@tiptap/extension-drag-handle-vue-3': 3.33.0
+  '@nuxt/ui>@tiptap/extension-floating-menu': 3.33.0
+  '@nuxt/ui>@tiptap/extension-horizontal-rule': 3.33.0
+  '@nuxt/ui>@tiptap/extension-image': 3.33.0
+  '@nuxt/ui>@tiptap/extension-mention': 3.33.0
+  '@nuxt/ui>@tiptap/extension-node-range': 3.33.0
+  '@nuxt/ui>@tiptap/extension-placeholder': 3.33.0
+  '@nuxt/ui>@tiptap/markdown': 3.33.0
+  '@nuxt/ui>@tiptap/pm': 3.33.0
+  '@nuxt/ui>@tiptap/starter-kit': 3.33.0
+  '@nuxt/ui>@tiptap/suggestion': 3.33.0
+  '@nuxt/ui>@tiptap/vue-3': 3.33.0
