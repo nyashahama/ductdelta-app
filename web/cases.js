@@ -41,6 +41,7 @@
   let scope = null;
   let createDraft = null;
   let actionDraft = null;
+  let caseFiles = null;
 
   function node(tag, text = "", className = "") {
     const result = document.createElement(tag);
@@ -129,6 +130,7 @@
     if (scope !== context) return;
     const revision = {};
     context.detailRequest = revision;
+    if (caseFiles?.context !== context || caseFiles.id !== id) clearFiles();
     context.selected = id;
     context.detail = null;
     clearDetails();
@@ -294,6 +296,7 @@
     element("case-agreement").textContent = record.agreement || "Not recorded";
     element("case-source").hidden = !record.observation_id;
     renderMoney(record.financial);
+    renderFiles(context);
     renderTimeline(record.events);
     const available = availableActions(context);
     element("case-actions").hidden = available.length === 0;
@@ -304,6 +307,185 @@
     actionSelect.disabled = false;
     actionFields.disabled = false;
     message("case-detail-status", "");
+  }
+
+  const fileExtensions = new Map([
+    ["pdf", "application/pdf"], ["png", "image/png"], ["jpg", "image/jpeg"],
+    ["jpeg", "image/jpeg"], ["txt", "text/plain"],
+  ]);
+  const fileTypes = new Map([
+    ["application/pdf", "PDF"], ["image/png", "PNG"], ["image/jpeg", "JPEG"], ["text/plain", "Text file"],
+  ]);
+  const fileList = element("case-files-list");
+  const fileForm = element("case-file-form");
+  const fileAccess = element("case-file-access");
+  const filePicker = element("case-file");
+  const fileUpload = element("case-file-upload");
+  const fileSubmit = element("case-file-submit");
+  const fileSizeFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
+
+  function filesPath(files) {
+    return casePath(files.context, files.id) + "/files";
+  }
+
+  function resetFileUpload() {
+    fileForm.reset();
+    fileUpload.open = false;
+    busyFileUpload(false);
+    message("case-file-upload-error", "");
+  }
+
+  function clearFiles() {
+    caseFiles = null;
+    fileList.replaceChildren();
+    resetFileUpload();
+    fileUpload.hidden = true;
+    fileAccess.replaceChildren();
+    element("case-files-retry-bar").hidden = true;
+    message("case-files-status", "");
+    message("case-files-error", "");
+    message("case-file-confirmation", "");
+  }
+
+  function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + (bytes === 1 ? " byte" : " bytes");
+    if (bytes < 1024 * 1024) return fileSizeFormat.format(bytes / 1024) + " KiB";
+    return fileSizeFormat.format(bytes / (1024 * 1024)) + " MiB";
+  }
+
+  function fileRow(files, file) {
+    const row = node("li", "", "case-file-row");
+    const description = node("div");
+    const metadata = node("p", "", "case-file-meta");
+    const recorded = node("time", dateFull.format(new Date(file.recorded_at)) + " UTC");
+    recorded.dateTime = file.recorded_at;
+    metadata.append(node("span", file.access_class === "finance" ? "Finance" : "Site", "tag"),
+      node("span", fileTypes.get(file.media_type) || file.media_type),
+      node("span", formatFileSize(Number(file.byte_size))), recorded);
+    description.append(node("p", file.filename, "case-file-name"), metadata);
+    if (file.caption) description.append(node("p", file.caption, "case-file-caption"));
+
+    const download = node("a", "Download", "button secondary");
+    download.href = filesPath(files) + "/" + encodeURIComponent(file.id);
+    download.setAttribute("aria-label", "Download " + file.filename);
+    row.append(description, download);
+    return row;
+  }
+
+  async function loadFiles(files) {
+    const revision = {};
+    files.request = revision;
+    message("case-files-status", "Loading files…");
+    message("case-files-error", "");
+    element("case-files-retry-bar").hidden = true;
+    try {
+      const records = await request(filesPath(files));
+      if (caseFiles !== files || files.request !== revision) return;
+      fileList.replaceChildren(...records.map((file) => fileRow(files, file)));
+      message("case-files-status", records.length ? "" : "No original files have been added.");
+    } catch (error) {
+      if (caseFiles !== files || files.request !== revision) return;
+      message("case-files-status", "");
+      projectError(error, "case-files-error");
+      if (caseFiles === files) element("case-files-retry-bar").hidden = false;
+    }
+  }
+
+  function renderFiles(context) {
+    const record = context.detail;
+    const first = !caseFiles;
+    if (first) caseFiles = { context, id: record.id, upload: null, access: null };
+    const files = caseFiles;
+    const finance = record.capabilities.includes("finance");
+    if (files.finance !== finance) {
+      files.finance = finance;
+      fileList.replaceChildren();
+    }
+    const capture = context.project.permission === "capture" && !record.closed;
+    const access = capture ? (finance ? "finance" : "site") : null;
+    if (files.access !== access || first) {
+      files.access = access;
+      files.upload = null;
+      resetFileUpload();
+      fileAccess.replaceChildren();
+      if (access) fileAccess.append(new Option("Site team", "site"));
+      if (access === "finance") fileAccess.append(new Option("Finance only", "finance"));
+      fileUpload.hidden = !access;
+    }
+    void loadFiles(files);
+  }
+
+  function busyFileUpload(busy) {
+    element("case-file-fields").disabled = busy;
+    fileSubmit.disabled = busy;
+    fileSubmit.textContent = busy ? "Uploading…" : "Upload file";
+  }
+
+  async function uploadFile(event) {
+    event.preventDefault();
+    const files = caseFiles;
+    if (!files?.access || files.upload?.busy) return;
+    const file = filePicker.files[0];
+    if (!file) return;
+    const reportedType = file.type.toLowerCase();
+    const extension = file.name.match(/\.([^.]+)$/)?.[1].toLowerCase();
+    const type = reportedType || fileExtensions.get(extension);
+    const access = fileAccess.value;
+    const caption = element("case-file-caption").value.trim();
+    if (!file.size) {
+      message("case-file-upload-error", "Choose a file that is not empty.");
+      filePicker.focus();
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      message("case-file-upload-error", "Choose a file up to 5 MiB.");
+      filePicker.focus();
+      return;
+    }
+    if (!fileTypes.has(type)) {
+      message("case-file-upload-error", "Choose a PDF, PNG, JPEG or TXT file.");
+      filePicker.focus();
+      return;
+    }
+    if (files.upload?.file !== file || files.upload?.access !== access || files.upload?.caption !== caption) {
+      files.upload = { file, access, caption, operation: crypto.randomUUID() };
+    }
+    const draft = files.upload;
+    draft.busy = true;
+    message("case-file-upload-error", "");
+    message("case-file-confirmation", "");
+    busyFileUpload(true);
+
+    try {
+      const headers = {
+        "Content-Type": type,
+        "X-Operation-Id": draft.operation,
+        "X-File-Name": encodeURIComponent(file.name),
+        "X-File-Access": access,
+      };
+      if (caption) headers["X-File-Caption"] = encodeURIComponent(caption);
+      const response = await fetch(filesPath(files), { method: "POST", headers, body: file });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        const error = new Error(data?.message || "Could not upload the file. Try again.");
+        error.status = response.status;
+        throw error;
+      }
+      if (caseFiles !== files || files.upload !== draft) return;
+      files.upload = null;
+      resetFileUpload();
+      fileUpload.querySelector("summary").focus();
+      message("case-file-confirmation", file.name + " uploaded.");
+      void loadFiles(files);
+    } catch (error) {
+      if (caseFiles === files && files.upload === draft) projectError(error, "case-file-upload-error");
+    } finally {
+      if (caseFiles === files && files.upload === draft) {
+        draft.busy = false;
+        busyFileUpload(false);
+        if (fileUpload.open) fileSubmit.focus();
+      }
+    }
   }
 
   function field(parent, name, label, settings = {}) {
@@ -638,6 +820,7 @@
     element("case-list-more-bar").hidden = true;
     caseList.replaceChildren();
     clearDetails();
+    clearFiles();
     message("case-error", "");
     message("case-count", "");
     message("case-save-status", "");
@@ -680,4 +863,8 @@
     renderAction(actionSelect.value, scope.detail);
   });
   actionForm.addEventListener("submit", saveAction);
+  fileForm.addEventListener("submit", uploadFile);
+  element("case-files-retry").addEventListener("click", () => {
+    if (caseFiles) void loadFiles(caseFiles);
+  });
 })();

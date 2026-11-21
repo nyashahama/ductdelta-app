@@ -297,3 +297,25 @@ fieldset { display: grid; min-width: 0; padding: 0; margin: 0; border: 0; gap: .
 @media (max-width: 31rem) {
   .case-financial-data { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.case-files { margin-top: .85rem; }
+.case-files h3 { font-size: 1rem; }
+.case-file-list { list-style: none; margin: 0; padding: 0; }
+.case-file-row { display: flex; justify-content: space-between; align-items: start; gap: .7rem; padding: .8rem 1rem; }
+.case-file-row + .case-file-row { border-top: 1px solid var(--line); }
+.case-file-row > div { min-width: 0; }
+.case-file-name { font-weight: 670; overflow-wrap: anywhere; }
+.case-file-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .6rem; color: var(--muted); font-size: .79rem; }
+.case-file-caption { color: var(--muted); font-size: .86rem; overflow-wrap: anywhere; white-space: pre-wrap; margin-top: .3rem; }
+.case-file-row .button { text-decoration: none; flex: none; }
+.case-file-upload { border-top: 1px solid var(--line); padding: .8rem 1rem; }
+.case-file-upload summary { cursor: pointer; color: var(--blue); font-weight: 650; }
+.case-file-upload .form { margin-top: .65rem; gap: .65rem; }
+.case-file-upload fieldset { grid-template-columns: minmax(0, 1fr) minmax(0, .65fr); }
+.case-file-upload fieldset > :first-child { grid-column: 1 / -1; }
+.case-file-upload button { justify-self: start; }
+input[type="file"]::file-selector-button { margin-right: .5rem; border: 0; border-radius: 4px; padding: .23rem .45rem; background: #e6effb; color: #204c7b; cursor: pointer; }
+
+@media (max-width: 38rem) {
+  .case-file-upload fieldset { grid-template-columns: minmax(0, 1fr); }
+}
