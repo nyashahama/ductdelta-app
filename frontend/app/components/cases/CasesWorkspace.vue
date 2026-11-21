@@ -236,7 +236,7 @@ function savedAction() {
               @saved="savedAction"
               @session-expired="expire"
             />
-            <CaseTimeline :events="record.events" />
+            <CaseTimeline :events="record.events" :receipts="record.bank_receipts" />
           </div>
         </template>
       </div>

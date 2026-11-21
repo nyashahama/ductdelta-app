@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { dispositions, eventTitle, formatDate, formatDecimal, moneyLabels, outcomes, type CaseEvent, type MoneyField } from './case-data'
+import { dispositions, eventTitle, formatDate, formatDecimal, moneyLabels, outcomes, type BankReceipt, type CaseEvent, type MoneyField } from './case-data'
 
-const props = defineProps<{ events: CaseEvent[] }>()
-const references = computed(() => new Map(props.events.map(event => [event.id, eventTitle(event)])))
+const props = defineProps<{ events: CaseEvent[], receipts: BankReceipt[] }>()
+const references = computed(() => new Map([
+  ...props.events.map(event => [event.id, eventTitle(event)] as const),
+  ...props.receipts.map(receipt => [receipt.id, 'Receipt ' + receipt.reference] as const)
+]))
 const referenceKeys = new Set(['notice', 'instruction', 'quote', 'predecessor', 'application', 'receipt', 'certificate', 'allocation'])
 const amountKeys = new Set(['amount', 'cumulative', 'withheld', 'released'])
 const eventLabels = {
@@ -30,7 +33,8 @@ function visibleFields(event: CaseEvent) {
     ? []
     : [{ id: key, label, value: fieldValue(key, data[key]) }])
   for (const [key, value] of Object.entries(event.data.financial_snapshot ?? {})) {
-    const label = key === 'work_delta' ? 'Certified this period' : moneyLabels[key as MoneyField]
+    const label = ({ work_delta: 'Certified this period', certificate_credit_applied: 'Certificate credit applied' } as Record<string, string>)[key]
+      ?? moneyLabels[key as MoneyField]
     if (label && value != null) content.push({ id: 'snapshot-' + key, label, value: formatDecimal(value) })
   }
   return content

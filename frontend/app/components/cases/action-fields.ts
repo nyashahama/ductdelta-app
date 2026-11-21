@@ -1,4 +1,4 @@
-import { dispositions, eventsOf, eventTitle, outcomes, unreversedAllocations, type ActionKind, type CaseEvent, type CaseRecord } from './case-data'
+import { dispositions, eventsOf, eventTitle, formatDecimal, outcomes, unreversedAllocations, type ActionKind, type CaseEvent, type CaseRecord } from './case-data'
 
 export type Choice = { value: string, label: string }
 export type ActionField = {
@@ -62,9 +62,18 @@ export function actionFields(kind: ActionKind, record: CaseRecord): ActionField[
     }
     case 'receipt':
       return [reference('Receipt reference'), money('amount', 'Receipt amount')]
-    case 'allocate':
-      return [linked('receipt', 'Cash receipt', eventsOf(record, 'receipt')), linked('certificate', 'Certificate', eventsOf(record, 'certificate')),
+    case 'allocate': {
+      const receipts = record.bank_receipts.filter(receipt => Number(receipt.available) > 0).map(receipt => ({
+        value: receipt.id,
+        label: receipt.case_id === record.id
+          ? 'Receipt ' + receipt.reference
+          : 'Receipt ' + receipt.reference + ' · ' + receipt.project_name + ' / ' + receipt.case_title
+            + ' · R' + formatDecimal(receipt.available) + ' available'
+      }))
+      const certificates = eventsOf(record, 'certificate').filter(event => record.allocatable_certificates.includes(event.id))
+      return [{ name: 'receipt', label: 'Cash receipt', options: receipts }, linked('certificate', 'Certificate', certificates),
         money('amount', 'Allocation amount'), reference('Allocation reference')]
+    }
     case 'reverse_allocation':
       return [linked('allocation', 'Allocation', unreversedAllocations(record)), paragraph('reason', 'Reversal reason', 4000)]
     case 'reopen':

@@ -63,17 +63,28 @@ export type CaseEvent = {
     kind: K
     recorded_at: string
     actor_id: string
-    data: EventPayload[K] & { financial_snapshot?: Partial<Record<MoneyField | 'work_delta', string | null>> }
+    data: EventPayload[K] & { financial_snapshot?: Partial<Record<MoneyField | 'work_delta' | 'certificate_credit_applied', string | null>> }
   };
 }[ActionKind]
 
 export type CaseSummary = { id: string, title: string, closed: boolean }
 export type CasePage = { cases: CaseSummary[], next_before: string | null }
+export type BankReceipt = {
+  id: string
+  reference: string
+  available: string
+  case_id: string
+  case_title: string
+  project_name: string
+}
+
 export type CaseRecord = CaseSummary & {
   agreement: string | null
   observation_id: string | null
   capabilities: Capability[]
   events: CaseEvent[]
+  bank_receipts: BankReceipt[]
+  allocatable_certificates: string[]
   financial: FinancialPosition | null
 }
 
@@ -88,7 +99,8 @@ export function eventsOf<K extends ActionKind>(record: CaseRecord, kind: K) {
 
 export function unreversedAllocations(record: CaseRecord) {
   const reversed = new Set(eventsOf(record, 'reverse_allocation').map(event => event.data.allocation))
-  return eventsOf(record, 'allocate').filter(event => !reversed.has(event.id))
+  const receipts = new Set(record.bank_receipts.map(receipt => receipt.id))
+  return eventsOf(record, 'allocate').filter(event => !reversed.has(event.id) && receipts.has(event.data.receipt))
 }
 
 export function eventTitle(event: CaseEvent) {
@@ -110,7 +122,7 @@ export function availableActions(record: CaseRecord, permission: 'read' | 'captu
     if (kind === 'close') return true
     if ((grant === 'commercial' || grant === 'finance') && !record.agreement) return false
     if (kind === 'decision') return eventsOf(record, 'quote').length > 0
-    if (kind === 'allocate') return eventsOf(record, 'receipt').length > 0 && eventsOf(record, 'certificate').length > 0
+    if (kind === 'allocate') return record.bank_receipts.some(receipt => Number(receipt.available) > 0) && record.allocatable_certificates.length > 0
     return true
   })
 }
