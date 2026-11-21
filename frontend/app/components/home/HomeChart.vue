@@ -31,7 +31,7 @@ const description = computed(() => `Change activity, last ${props.activity.lengt
 
     <UChart
       type="area"
-      curve="linear"
+      curve="monotone"
       :data="series"
       index="date"
       :categories="[
@@ -42,8 +42,8 @@ const description = computed(() => `Change activity, last ${props.activity.lengt
       :y-axis="false"
       :grid="true"
       :format="(value: number) => integer.format(value)"
-      :aspect-ratio="3.6"
-      :initial-width="960"
+      :aspect-ratio="3"
+      :initial-width="1152"
       class="-my-px"
       :aria-label="description"
       role="img"
