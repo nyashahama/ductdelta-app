@@ -1,6 +1,6 @@
 //! HTTP entry points for the protected change case commands.
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::{Json, Router, routing};
 use serde::Deserialize;
@@ -22,16 +22,25 @@ pub(crate) fn routes() -> Router<Workspace> {
         )
 }
 
+#[derive(Deserialize)]
+struct CasePage {
+    before: Option<Uuid>,
+}
+
 async fn list(
     State(workspace): State<Workspace>,
     Path(project): Path<Uuid>,
+    Query(page): Query<CasePage>,
     headers: HeaderMap,
 ) -> Reply<Json<Value>> {
     let digest = session(&headers)?;
     let result = workspace
         .query(move |database| {
             database
-                .query_one("SELECT ductdelta.web_cases($1, $2)", &[&digest, &project])?
+                .query_one(
+                    "SELECT ductdelta.web_cases($1, $2, $3)",
+                    &[&digest, &project, &page.before],
+                )?
                 .try_get(0)
         })
         .await?;

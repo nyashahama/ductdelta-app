@@ -89,7 +89,8 @@ def run(socket, auth_migration):
     detail(case=other_case, error="42501")
     detail(session=other, error="42501")
     listed = json.loads(sql(f"SELECT ductdelta.web_cases({viewer}, '{PROJECT}')"))
-    assert listed == [{"id": case_id, "title": "Replace chillers", "closed": False}]
+    assert listed == {"cases": [{"id": case_id, "title": "Replace chillers", "closed": False}],
+                      "next_before": None}
     sql("SELECT * FROM ductdelta.change_case", error="42501")
     sql("SELECT ductdelta.case_totals(NULL)", error="42501")
     source = sql(f"SELECT ductdelta.capture_observation('{PROJECT}', '{uuid.uuid4()}', "

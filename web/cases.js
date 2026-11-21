@@ -78,21 +78,25 @@
       row.append(button);
       return row;
     }));
+    element("case-list-more-bar").hidden = !context.nextBefore;
     const count = context.cases.length;
     message("case-count", count ? count + (count === 1 ? " case" : " cases") : "");
     message("case-list-status", count ? "" : "No change cases have been recorded for this project.");
   }
 
-  async function loadList(context) {
+  async function loadList(context, before = null) {
     const revision = {};
     context.listRequest = revision;
+    element("case-list-more").disabled = true;
     element("case-list-retry-bar").hidden = true;
     message("case-error", "");
     if (!context.loaded) message("case-list-status", "Loading change cases…");
     try {
-      const cases = await request(casePath(context));
+      const suffix = before ? "?before=" + encodeURIComponent(before) : "";
+      const page = await request(casePath(context) + suffix);
       if (scope !== context || context.listRequest !== revision) return;
-      context.cases = cases;
+      context.cases = before ? context.cases.concat(page.cases) : page.cases;
+      context.nextBefore = page.next_before;
       context.loaded = true;
       displayList(context);
     } catch (error) {
@@ -101,7 +105,10 @@
       projectError(error, "case-error");
       if (scope === context) element("case-list-retry-bar").hidden = false;
     } finally {
-      if (context.listRequest === revision) context.listRequest = null;
+      if (context.listRequest === revision) {
+        context.listRequest = null;
+        if (scope === context) element("case-list-more").disabled = false;
+      }
     }
   }
 
@@ -626,6 +633,7 @@
     scope = project ? { project, cases: [], loaded: false, selected: null, detail: null } : null;
     element("new-case").hidden = project?.permission !== "capture";
     element("case-list-retry-bar").hidden = true;
+    element("case-list-more-bar").hidden = true;
     caseList.replaceChildren();
     clearDetails();
     message("case-error", "");
@@ -642,6 +650,9 @@
     showCases(true);
   });
   element("observations-nav").addEventListener("click", () => showCases(false));
+  element("case-list-more").addEventListener("click", () => {
+    if (scope?.nextBefore && !scope.listRequest) void loadList(scope, scope.nextBefore);
+  });
   element("case-list-retry").addEventListener("click", () => {
     if (scope) void loadList(scope);
   });

@@ -37,9 +37,9 @@ def verify(server):
     server.request(cases, "POST", draft, viewer, expected=404)
     case = server.request(cases, "POST", draft, reporter)[0]
     assert server.request(cases, "POST", draft, reporter)[0] == case
-    assert server.request(cases, cookie=viewer)[0] == [
+    assert server.request(cases, cookie=viewer)[0] == {"next_before": None, "cases": [
         {"id": case["id"], "title": draft["title"], "closed": False},
-    ]
+    ]}
     detail = f"{cases}/{case['id']}"
 
     def read(cookie=reporter):
@@ -55,6 +55,8 @@ def verify(server):
     assert read()["observation_id"] == observation["id"]
     assert read()["capabilities"] == ["commercial", "direction", "finance"]
     assert read(viewer)["capabilities"] == []
+    record("notice", {"reference": "N-invalid", "agreement": "MECH-01",
+                      "body": "Invalid date", "due_at": "2026-02-30T12:00:00Z"}, expected=422)
     notice = record("notice", {"reference": "N-01", "agreement": "MECH-01",
                                "body": "Changed plantroom equipment."})
     record("notice_dispatch", {"notice": notice["id"], "reference": "Portal #18"})
@@ -99,6 +101,23 @@ def verify(server):
     assert reopened["financial"]["outstanding"] == "4000.00"
     assert reopened["events"][-2]["kind"] == "close"
     print("PASS: disputed change, restricted finance, retention, split allocation, closeout and reopening over HTTP")
+
+    server.sql(
+        "INSERT INTO ductdelta.change_case "
+        "(organization_id, project_id, actor_id, operation_id, title, recorded_at) "
+        "SELECT item.organization_id, item.project_id, item.actor_id, gen_random_uuid(), "
+        "'Pagination ' || index, item.recorded_at + interval '1 second' "
+        "FROM ductdelta.change_case AS item CROSS JOIN generate_series(1, 101) AS index "
+        f"WHERE item.id = '{case['id']}'"
+    )
+    first = server.request(cases, cookie=viewer)[0]
+    assert len(first["cases"]) == 100 and first["next_before"] == first["cases"][-1]["id"]
+    rest = server.request(f"{cases}?before={first['next_before']}", cookie=viewer)[0]
+    assert len(rest["cases"]) == 2 and rest["next_before"] is None
+    assert rest["cases"][-1]["id"] == case["id"]
+    assert len({item["id"] for item in first["cases"] + rest["cases"]}) == 102
+    server.request(f"{cases}?before={uuid4()}", cookie=viewer, expected=404)
+    print("PASS: case register remains traversable through pages and exact time ties")
 
 
 if __name__ == "__main__":

@@ -48,10 +48,12 @@ impl From<Error> for Rejection {
                 StatusCode::CONFLICT,
                 "The operation conflicts with a saved record.",
             ),
-            Some("22023" | "22P02" | "23503" | "23514" | "23502") => Self(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "Check the submitted details.",
-            ),
+            Some("22023" | "22007" | "22008" | "22009" | "22P02" | "23503" | "23514" | "23502") => {
+                Self(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "Check the submitted details.",
+                )
+            }
             _ => Self(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Could not complete the operation.",
@@ -142,6 +144,15 @@ pub(crate) fn serve() -> Result<(), &'static str> {
                     (
                         [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
                         include_str!("../web/workspace.js"),
+                    )
+                }),
+            )
+            .route(
+                "/assets/cases.js",
+                routing::get(|| async {
+                    (
+                        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+                        include_str!("../web/cases.js"),
                     )
                 }),
             )

@@ -115,25 +115,46 @@ BEGIN
 END;
 $$;
 
-CREATE FUNCTION ductdelta.web_cases(session_digest bytea, requested_project uuid) RETURNS jsonb
+CREATE FUNCTION ductdelta.web_cases(
+    session_digest bytea, requested_project uuid, before_case uuid DEFAULT NULL
+) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
     member ductdelta.project_member := ductdelta.case_member(session_digest, requested_project, false);
+    cursor_time timestamptz;
     result jsonb;
 BEGIN
-    SELECT coalesce(jsonb_agg(jsonb_build_object(
-        'id', item.id, 'title', item.title, 'closed', item.closeout_id IS NOT NULL
-    ) ORDER BY item.recorded_at DESC, item.id DESC), '[]'::jsonb)
-    INTO result
-    FROM (
+    IF before_case IS NOT NULL THEN
+        SELECT recorded_at INTO cursor_time
+        FROM ductdelta.change_case
+        WHERE (organization_id, project_id, id) =
+              (member.organization_id, member.project_id, before_case);
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Case cursor unavailable' USING ERRCODE = '42501';
+        END IF;
+    END IF;
+
+    WITH page AS (
         SELECT id, title, closeout_id, recorded_at
         FROM ductdelta.change_case
-        WHERE organization_id = member.organization_id AND project_id = member.project_id
+        WHERE (organization_id, project_id) = (member.organization_id, member.project_id)
+          AND (before_case IS NULL OR (recorded_at, id) < (cursor_time, before_case))
         ORDER BY recorded_at DESC, id DESC
-        LIMIT 100
-    ) AS item;
+        LIMIT 101
+    ), visible AS (
+        SELECT * FROM page ORDER BY recorded_at DESC, id DESC LIMIT 100
+    )
+    SELECT jsonb_build_object(
+        'cases', coalesce(jsonb_agg(jsonb_build_object(
+            'id', id, 'title', title, 'closed', closeout_id IS NOT NULL
+        ) ORDER BY recorded_at DESC, id DESC), '[]'::jsonb),
+        'next_before', CASE WHEN (SELECT count(*) FROM page) > 100
+                       THEN (SELECT id FROM visible ORDER BY recorded_at, id LIMIT 1) END
+    )
+    INTO result
+    FROM visible;
     RETURN result;
 END;
 $$;
@@ -362,7 +383,7 @@ END;
 $$;
 
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA ductdelta FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION ductdelta.web_cases(bytea, uuid),
+GRANT EXECUTE ON FUNCTION ductdelta.web_cases(bytea, uuid, uuid),
     ductdelta.web_create_case(bytea, uuid, uuid, text, uuid),
     ductdelta.web_case(bytea, uuid, uuid),
     ductdelta.web_case_action(bytea, uuid, uuid, uuid, text, jsonb)
