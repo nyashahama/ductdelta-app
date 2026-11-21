@@ -1,11 +1,49 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
+import WorkspaceGate from '~/components/company/WorkspaceGate.vue'
 
 const {
-  session, project, projects, view, signInError, signing, target, restoreSession, signIn, signOut
+  session, project, projects, view, signing, target, restoreSession, signOut
 } = useWorkspace()
 const open = ref(false)
-const key = ref('')
+const route = useRoute()
+const router = useRouter()
+const invitation = ref('')
+const invitationStorage = 'ductdelta-pending-invitation'
+const pendingKeys = ref<string[]>([])
+const keyStorage = 'ductdelta-pending-keys'
+
+function storeKeys(keys: string[]) {
+  try {
+    if (keys.length) sessionStorage.setItem(keyStorage, JSON.stringify(keys))
+    else sessionStorage.removeItem(keyStorage)
+    pendingKeys.value = keys
+  } catch {
+    // The enrollment screen checks that a recovery key was retained before submitting.
+  }
+}
+
+function addKey(key: string) {
+  storeKeys([key, ...pendingKeys.value])
+}
+
+function discardKey(key: string) {
+  storeKeys(pendingKeys.value.filter(saved => saved !== key))
+}
+
+function clearInvitation() {
+  invitation.value = ''
+  try {
+    sessionStorage.removeItem(invitationStorage)
+  } catch {
+    // The current tab can still continue.
+  }
+}
+
+function entered() {
+  clearInvitation()
+  storeKeys([])
+}
 
 const links = computed<NavigationMenuItem[]>(() => ([
   { label: 'Overview', icon: 'i-lucide-house', to: target('overview'), active: view.value === 'overview' },
@@ -18,16 +56,39 @@ const groups = computed(() => [{
   items: links.value.map(({ label, icon, to }) => ({ label, icon, to, onSelect: () => { open.value = false } }))
 }])
 
-async function submit() {
-  await signIn(key.value)
-  key.value = ''
-}
 async function selectProject(id: string) {
   open.value = false
   await navigateTo(target(view.value, id))
 }
 
-onMounted(restoreSession)
+function readInvitation(hash: string) {
+  const token = new URLSearchParams(hash.slice(1)).get('invite')
+  if (!token || !/^[a-f0-9]{64}$/i.test(token)) return
+  invitation.value = token
+  try {
+    sessionStorage.setItem(invitationStorage, token)
+    void router.replace({ path: route.path, query: route.query, hash: '' })
+  } catch {
+    // Leave the fragment available for reload when the browser blocks session storage.
+  }
+}
+
+// Nuxt applies the initial fragment after restoring the prerendered route.
+watch(() => route.hash, hash => readInvitation(hash), { flush: 'post' })
+
+onMounted(async () => {
+  try {
+    const saved: unknown = JSON.parse(sessionStorage.getItem(keyStorage) ?? '[]')
+    if (Array.isArray(saved)) pendingKeys.value = saved.filter((key): key is string => typeof key === 'string' && /^[a-f0-9]{64}$/.test(key))
+    const savedInvite = sessionStorage.getItem(invitationStorage)
+    if (savedInvite && /^[a-f0-9]{64}$/i.test(savedInvite)) invitation.value = savedInvite
+  } catch {
+    pendingKeys.value = []
+  }
+  readInvitation(location.hash)
+  await restoreSession()
+})
+
 </script>
 
 <template>
@@ -37,48 +98,16 @@ onMounted(restoreSession)
     </p>
   </main>
 
-  <main v-else-if="!session" class="min-h-dvh grid place-items-center p-4">
-    <UCard class="w-full max-w-md" aria-labelledby="sign-in-title">
-      <template #header>
-        <div class="flex items-center gap-2 text-highlighted font-semibold">
-          <UIcon name="i-lucide-triangle" class="size-5 text-primary" />
-          DuctDelta
-        </div>
-      </template>
-      <h1 id="sign-in-title" class="text-2xl font-semibold text-highlighted">
-        Sign in to your workspace
-      </h1>
-      <p class="mt-2 text-muted">
-        Use your access key to open your projects.
-      </p>
-      <form class="mt-5 flex flex-col gap-3" @submit.prevent="submit">
-        <UFormField label="Access key" name="key" required>
-          <UInput
-            v-model="key"
-            name="key"
-            type="password"
-            autocomplete="current-password"
-            required
-            :readonly="signing"
-            class="w-full"
-          />
-        </UFormField>
-        <UAlert
-          v-if="signInError"
-          role="alert"
-          color="error"
-          variant="subtle"
-          :title="signInError"
-        />
-        <UButton
-          type="submit"
-          :loading="signing"
-          block
-          label="Sign in"
-        />
-      </form>
-    </UCard>
-  </main>
+  <WorkspaceGate
+    v-else-if="!session || invitation || pendingKeys.length"
+    :invitation="invitation"
+    :pending-keys="pendingKeys"
+    @retain="addKey"
+    @discard="discardKey"
+    @done="entered"
+    @joined="clearInvitation"
+    @cancel="clearInvitation"
+  />
 
   <UDashboardGroup v-else unit="rem">
     <UDashboardSidebar
