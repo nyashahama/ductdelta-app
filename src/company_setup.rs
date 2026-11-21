@@ -37,12 +37,17 @@ pub(crate) struct EnrollmentKeys {
 }
 
 impl EnrollmentKeys {
-    pub(crate) fn new() -> Self {
-        Self {
-            access: workspace::random_key(),
-            recovery: workspace::random_key(),
-            session: workspace::random_key(),
+    pub(crate) fn new(recovery: String) -> Reply<Self> {
+        if !workspace::valid_key(&recovery) {
+            return Err(Rejection::invalid(
+                "A valid replacement recovery key is required.",
+            ));
         }
+        Ok(Self {
+            access: workspace::random_key(),
+            recovery,
+            session: workspace::random_key(),
+        })
     }
 
     pub(crate) fn digests(&self) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
@@ -70,6 +75,7 @@ impl EnrollmentKeys {
 struct CompanyDraft {
     company: String,
     name: String,
+    recovery_key: String,
 }
 
 pub(crate) fn checked_name(name: &str) -> Reply<&str> {
@@ -86,7 +92,7 @@ async fn register(
 ) -> Reply<Response> {
     let company = checked_name(&draft.company)?.to_owned();
     let name = checked_name(&draft.name)?.to_owned();
-    let keys = EnrollmentKeys::new();
+    let keys = EnrollmentKeys::new(draft.recovery_key)?;
     let (access, recovery, session) = keys.digests();
     let id = workspace
         .query(move |database| {
@@ -104,6 +110,7 @@ async fn register(
 #[derive(Deserialize)]
 struct RecoveryRequest {
     recovery_key: String,
+    replacement_recovery_key: String,
 }
 
 async fn recover(
@@ -114,7 +121,10 @@ async fn recover(
         return Err(Rejection::invalid("Enter a valid recovery key."));
     }
     let previous = workspace::key_digest(&input.recovery_key);
-    let keys = EnrollmentKeys::new();
+    if input.recovery_key == input.replacement_recovery_key {
+        return Err(Rejection::invalid("Use a new replacement recovery key."));
+    }
+    let keys = EnrollmentKeys::new(input.replacement_recovery_key)?;
     let (access, recovery, session) = keys.digests();
     let actor = workspace
         .query(move |database| {

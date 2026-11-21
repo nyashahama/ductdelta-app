@@ -14,6 +14,32 @@ CREATE TABLE ductdelta.organization_member (
 INSERT INTO ductdelta.organization_member (organization_id, actor_id, role)
 SELECT DISTINCT organization_id, actor_id, 'member' FROM ductdelta.project_member;
 
+CREATE FUNCTION ductdelta.ensure_company_membership() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+    INSERT INTO ductdelta.organization_member (organization_id, actor_id, role)
+    VALUES (NEW.organization_id, NEW.actor_id, 'member') ON CONFLICT DO NOTHING;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER ensure_company_membership
+BEFORE INSERT ON ductdelta.project_member
+FOR EACH ROW EXECUTE FUNCTION ductdelta.ensure_company_membership();
+
+ALTER TABLE ductdelta.project_member ADD FOREIGN KEY (organization_id, actor_id)
+    REFERENCES ductdelta.organization_member (organization_id, actor_id) ON DELETE CASCADE;
+
+CREATE TABLE ductdelta.project_creation (
+    organization_id uuid NOT NULL,
+    actor_id uuid NOT NULL REFERENCES ductdelta.actor,
+    operation_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    PRIMARY KEY (organization_id, actor_id, operation_id),
+    FOREIGN KEY (organization_id, project_id) REFERENCES ductdelta.project (organization_id, id)
+);
+
 CREATE TABLE ductdelta.web_recovery_key (
     actor_id uuid PRIMARY KEY REFERENCES ductdelta.actor,
     key_digest bytea NOT NULL UNIQUE CHECK (octet_length(key_digest) = 32)
@@ -145,30 +171,37 @@ END;
 $$;
 
 CREATE FUNCTION ductdelta.web_create_project(
-    requested_session bytea, company_id uuid, project_id uuid, project_name text
+    requested_session bytea, company_id uuid, requested_operation uuid, project_name text
 ) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
     creator uuid := ductdelta.lock_company_admin(requested_session, company_id);
     cleaned_name text := ductdelta.setup_name(project_name);
+    saved_id uuid;
+    saved_name text;
 BEGIN
-    INSERT INTO ductdelta.project (id, organization_id, name) VALUES (project_id, company_id, cleaned_name)
-    ON CONFLICT (id) DO NOTHING;
+    SELECT project.id, project.name INTO saved_id, saved_name
+    FROM ductdelta.project_creation AS creation
+    JOIN ductdelta.project AS project ON project.id = creation.project_id
+    WHERE (creation.organization_id, creation.actor_id, creation.operation_id) =
+          (company_id, creator, requested_operation);
     IF FOUND THEN
-        INSERT INTO ductdelta.project_member (organization_id, project_id, actor_id, permission)
-        VALUES (company_id, project_id, creator, 'capture');
-        INSERT INTO ductdelta.project_workflow_grant (organization_id, project_id, actor_id, capability)
-        SELECT company_id, project_id, creator, capability
-        FROM unnest(ARRAY['direction', 'commercial', 'finance']) AS capability;
-    ELSE
-        PERFORM FROM ductdelta.project AS project
-        WHERE project.id = project_id AND organization_id = company_id AND name = cleaned_name;
-        IF NOT FOUND THEN
+        IF saved_name IS DISTINCT FROM cleaned_name THEN
             RAISE EXCEPTION 'Operation conflicts with an existing project' USING ERRCODE = 'DD001';
         END IF;
+    ELSE
+        saved_id := gen_random_uuid();
+        INSERT INTO ductdelta.project (id, organization_id, name) VALUES (saved_id, company_id, cleaned_name);
+        INSERT INTO ductdelta.project_creation (organization_id, actor_id, operation_id, project_id)
+        VALUES (company_id, creator, requested_operation, saved_id);
+        INSERT INTO ductdelta.project_member (organization_id, project_id, actor_id, permission)
+        VALUES (company_id, saved_id, creator, 'capture');
+        INSERT INTO ductdelta.project_workflow_grant (organization_id, project_id, actor_id, capability)
+        SELECT company_id, saved_id, creator, capability
+        FROM unnest(ARRAY['direction', 'commercial', 'finance']) AS capability;
     END IF;
-    RETURN jsonb_build_object('id', project_id, 'name', cleaned_name);
+    RETURN jsonb_build_object('id', saved_id, 'name', cleaned_name);
 END;
 $$;
 
