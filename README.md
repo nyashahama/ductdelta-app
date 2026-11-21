@@ -22,6 +22,6 @@ The workspace uses the [Nuxt UI Dashboard template](https://github.com/nuxt-ui-t
 
 Project members can record an observation or a change case before a revised drawing arrives. Assigned roles can record notices, directions, signed quote amounts, performed work, certificates, retention, receipts and closeout. Evidence files retain their original bytes and SHA-256 hashes. Finance files require a finance grant.
 
-The ledger supports manual records in ZAR excluding VAT and allocates a receipt across certificates within one case. Notice dispatch and receipt are recorded from external references. The full release criteria are in the [product contract](docs/product.md).
+The ledger supports manual records in ZAR excluding VAT and allocates one receipt across certificates and projects in the same company when the user has finance access to both projects. Notice dispatch and receipt are recorded from external references. The full release criteria are in the [product contract](docs/product.md).
 
 Production acceptance requires a completed job through matched payment, a disputed change, and deployment and restore checks. Keep customer records out of the public repository.
