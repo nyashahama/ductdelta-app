@@ -31,7 +31,7 @@ pub(crate) struct Workspace {
 }
 
 pub(crate) struct Rejection(StatusCode, &'static str);
-type Reply<T> = Result<T, Rejection>;
+pub(crate) type Reply<T> = Result<T, Rejection>;
 
 impl IntoResponse for Rejection {
     fn into_response(self) -> Response {
@@ -48,10 +48,12 @@ impl From<Error> for Rejection {
                 StatusCode::CONFLICT,
                 "The operation conflicts with a saved record.",
             ),
-            Some("22023" | "22P02" | "23503" | "23514" | "23502") => Self(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "Check the submitted details.",
-            ),
+            Some("22023" | "22007" | "22008" | "22009" | "22P02" | "23503" | "23514" | "23502") => {
+                Self(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "Check the submitted details.",
+                )
+            }
             _ => Self(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Could not complete the operation.",
@@ -146,6 +148,15 @@ pub(crate) fn serve() -> Result<(), &'static str> {
                 }),
             )
             .route(
+                "/assets/cases.js",
+                routing::get(|| async {
+                    (
+                        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+                        include_str!("../web/cases.js"),
+                    )
+                }),
+            )
+            .route(
                 "/api/session",
                 routing::get(session_info).post(sign_in).delete(sign_out),
             )
@@ -158,6 +169,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
                 "/api/projects/{project}/observations/{observation}",
                 routing::get(observation_detail),
             )
+            .merge(crate::cases::routes())
             .layer(DefaultBodyLimit::max(64 * 1024))
             .layer(middleware::from_fn_with_state(
                 workspace.clone(),
