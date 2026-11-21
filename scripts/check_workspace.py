@@ -65,7 +65,7 @@ class Workspace:
 
 
 @contextmanager
-def workspace(port=None, *, backup=None, frontend=None, seed=True, seed_before=None):
+def workspace(port=None, *, backup=None, frontend=None, seed=True, seed_before=None, before_migration=None):
     target = ROOT / "target"
     subprocess.run(["cargo", "build", "--locked", "--target-dir", target], cwd=ROOT, check=True)
     environment = {key: value for key, value in os.environ.items() if not key.startswith(("PG", "DUCTDELTA_"))}
@@ -79,6 +79,8 @@ def workspace(port=None, *, backup=None, frontend=None, seed=True, seed_before=N
             for migration in sorted((ROOT / "migrations").glob("*.sql")):
                 if seed and migration.name == seed_before:
                     server.sql((ROOT / "tests/fixture.sql").read_text())
+                if before_migration and migration.name == before_migration[0]:
+                    before_migration[1](server)
                 server.sql(migration.read_text())
             if seed and seed_before is None:
                 server.sql((ROOT / "tests/fixture.sql").read_text())
