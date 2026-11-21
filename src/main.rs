@@ -1,6 +1,8 @@
 mod cases;
 mod evidence;
+mod frontend;
 mod observation;
+mod overview;
 mod workspace;
 
 use std::io::Write;
