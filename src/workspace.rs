@@ -9,7 +9,7 @@ use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::header;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::middleware::{self, Next};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{IntoResponse, Response};
 use axum::{Json, Router, routing};
 use postgres::{Client, Config, Error, NoTls};
 use serde::Deserialize;
@@ -131,36 +131,10 @@ pub(crate) fn serve() -> Result<(), &'static str> {
         .map_err(|_| "Could not start the web runtime.")?;
     runtime.block_on(async move {
         let app = Router::new()
+            .merge(crate::frontend::routes()?)
             .route(
-                "/",
-                routing::get(|| async { Html(include_str!("../web/index.html")) }),
-            )
-            .route(
-                "/assets/styles.css",
-                routing::get(|| async {
-                    (
-                        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
-                        include_str!("../web/styles.css"),
-                    )
-                }),
-            )
-            .route(
-                "/assets/workspace.js",
-                routing::get(|| async {
-                    (
-                        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
-                        include_str!("../web/workspace.js"),
-                    )
-                }),
-            )
-            .route(
-                "/assets/cases.js",
-                routing::get(|| async {
-                    (
-                        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
-                        include_str!("../web/cases.js"),
-                    )
-                }),
+                "/healthz",
+                routing::get(|| async { StatusCode::NO_CONTENT }),
             )
             .route(
                 "/api/session",
@@ -209,12 +183,14 @@ async fn same_origin(State(workspace): State<Workspace>, request: Request, next:
     }
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
-    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers
+        .entry(header::CACHE_CONTROL)
+        .or_insert(HeaderValue::from_static("no-store"));
     headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
-    headers.insert("content-security-policy", HeaderValue::from_static(
+    headers.entry(header::CONTENT_SECURITY_POLICY).or_insert(HeaderValue::from_static(
         "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
     ));
     response
