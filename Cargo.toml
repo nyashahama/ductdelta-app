@@ -1,0 +1,11 @@
+[package]
+name = "ductdelta"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94.1"
+publish = false
+
+[dependencies]
+postgres = { version = "0.19.14", features = ["with-time-0_3", "with-uuid-1"] }
+time = { version = "0.3", features = ["formatting", "parsing"] }
+uuid = "1"
