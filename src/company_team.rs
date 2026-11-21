@@ -113,6 +113,7 @@ async fn revoke_invitation(
 struct Accept {
     token: String,
     use_current_account: bool,
+    recovery_key: Option<String>,
 }
 
 async fn accept(
@@ -128,8 +129,18 @@ async fn accept(
         .then(|| workspace::session(&headers))
         .transpose()?;
     let token = workspace::key_digest(&input.token);
-    let keys = EnrollmentKeys::new();
-    let (access, recovery, session) = keys.digests();
+    let keys = if input.use_current_account {
+        None
+    } else {
+        Some(EnrollmentKeys::new(input.recovery_key.unwrap_or_default())?)
+    };
+    let (access, recovery, session) = keys.as_ref().map_or_else(
+        || (None, None, None),
+        |keys| {
+            let (access, recovery, session) = keys.digests();
+            (Some(access), Some(recovery), Some(session))
+        },
+    );
     let company = workspace
         .query(move |database| {
             database
@@ -140,10 +151,9 @@ async fn accept(
                 .try_get(0)
         })
         .await?;
-    if input.use_current_account {
-        Ok((StatusCode::CREATED, Json(json!({ "id": company }))).into_response())
-    } else {
-        Ok(keys.response(&workspace, StatusCode::CREATED, company))
+    match keys {
+        Some(keys) => Ok(keys.response(&workspace, StatusCode::CREATED, company)),
+        None => Ok((StatusCode::CREATED, Json(json!({ "id": company }))).into_response()),
     }
 }
 

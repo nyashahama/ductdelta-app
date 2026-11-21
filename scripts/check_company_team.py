@@ -2,6 +2,7 @@
 """Verify company invitations and live access changes through the HTTP API."""
 
 from concurrent.futures import ThreadPoolExecutor
+import secrets
 import uuid
 
 from check_workspace import workspace
@@ -13,7 +14,7 @@ def cookie(headers):
 
 def company(server, name):
     result, headers = server.request(
-        "/api/companies", "POST", {"company": name, "name": f"{name} owner"}, expected=201,
+        "/api/companies", "POST", {"company": name, "name": f"{name} owner", "recovery_key": secrets.token_hex(32)}, expected=201,
     )
     return f"/api/companies/{result['id']}", cookie(headers)
 
@@ -29,7 +30,8 @@ def invite(server, path, admin, name, role="member"):
 def accept(server, invite_token, existing=None, expected=201):
     return server.request(
         "/api/invitations/accept", "POST",
-        {"token": invite_token, "use_current_account": existing is not None}, existing,
+        {"token": invite_token, "use_current_account": existing is not None,
+         "recovery_key": secrets.token_hex(32) if existing is None else None}, existing,
         expected=expected,
     )
 
