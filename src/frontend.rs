@@ -33,11 +33,9 @@ impl Frontend {
         let shell = read_file(&directory.join("index.html")).map_err(
             |_| "Build the Nuxt workspace and set DUCTDELTA_WEB_DIST to .output/public.",
         )?;
-        let hashes = read_file(&directory.join("script-hashes.txt"))
-            .ok()
-            .and_then(|bytes| String::from_utf8(bytes).ok())
-            .ok_or("Frontend script hashes are missing or invalid. Rebuild the Nuxt workspace.")?;
-        let policy = content_policy(&hashes)?;
+        let script_hashes = read_hashes(&directory.join("script-hashes.txt"))?;
+        let style_hashes = read_hashes(&directory.join("style-hashes.txt"))?;
+        let policy = content_policy(&script_hashes, &style_hashes)?;
         let nuxt_assets = directory.join("_nuxt");
         if !fs::symlink_metadata(&nuxt_assets).is_ok_and(|metadata| metadata.is_dir()) {
             return Err("Nuxt assets are missing. Rebuild the Nuxt workspace.");
@@ -63,13 +61,27 @@ fn read_file(path: &FilePath) -> Result<Vec<u8>, std::io::Error> {
     fs::read(path)
 }
 
-fn content_policy(hashes: &str) -> Result<HeaderValue, &'static str> {
+fn read_hashes(path: &FilePath) -> Result<String, &'static str> {
+    read_file(path)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .ok_or("Frontend content hashes are missing or invalid. Rebuild the Nuxt workspace.")
+}
+
+fn content_policy(scripts: &str, styles: &str) -> Result<HeaderValue, &'static str> {
     let mut policy = String::from(concat!(
         "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; ",
         "form-action 'self'; script-src 'self'",
     ));
+    append_hashes(&mut policy, scripts)?;
+    policy.push_str("; style-src 'self'");
+    append_hashes(&mut policy, styles)?;
+    HeaderValue::from_str(&policy).map_err(|_| "Invalid frontend content policy.")
+}
+
+fn append_hashes(policy: &mut String, hashes: &str) -> Result<(), &'static str> {
     if hashes.is_empty() {
-        return Err("Frontend script hashes are missing. Rebuild the Nuxt workspace.");
+        return Err("Frontend content hashes are missing. Rebuild the Nuxt workspace.");
     }
     for hash in hashes.lines() {
         let bytes = hash.as_bytes();
@@ -79,13 +91,13 @@ fn content_policy(hashes: &str) -> Result<HeaderValue, &'static str> {
                 .iter()
                 .all(|&byte| byte.is_ascii_alphanumeric() || byte == b'+' || byte == b'/')
         {
-            return Err("Frontend script hash is invalid.");
+            return Err("Frontend content hash is invalid.");
         }
         policy.push_str(" 'sha256-");
         policy.push_str(hash);
         policy.push('\'');
     }
-    HeaderValue::from_str(&policy).map_err(|_| "Invalid frontend content policy.")
+    Ok(())
 }
 
 fn load_assets(

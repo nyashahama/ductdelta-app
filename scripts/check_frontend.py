@@ -33,9 +33,13 @@ class Shell(HTMLParser):
         self.script = []
         self.hashes = set()
         self.executable_hashes = set()
+        self.style = None
+        self.style_hashes = set()
 
     def handle_starttag(self, tag, attrs):
         attributes = dict(attrs)
+        if tag == "style":
+            self.style = []
         if tag == "script":
             if "src" in attributes:
                 self.assets.add(attributes["src"])
@@ -48,6 +52,11 @@ class Shell(HTMLParser):
                 self.assets.add(asset)
 
     def handle_endtag(self, tag):
+        if tag == "style" and self.style is not None:
+            style = "".join(self.style).replace("\r\n", "\n").replace("\r", "\n")
+            if style.strip():
+                self.style_hashes.add(base64.b64encode(hashlib.sha256(style.encode()).digest()).decode())
+            self.style = None
         if tag == "script" and self.script_type is not None:
             script = "".join(self.script).replace("\r\n", "\n").replace("\r", "\n")
             if script.strip():
@@ -58,6 +67,8 @@ class Shell(HTMLParser):
             self.script_type = None
 
     def handle_data(self, data):
+        if self.style is not None:
+            self.style.append(data)
         if self.script_type is not None:
             self.script.append(data)
 
@@ -74,10 +85,14 @@ def verify(server, public_dir):
     shell = Shell()
     shell.feed(body.decode())
     shell.close()
-    hashes = set(re.findall(r"'sha256-([^']+)'", policy))
+    directives = dict(directive.strip().split(" ", 1) for directive in policy.split(";"))
+    hashes = set(re.findall(r"'sha256-([^']+)'", directives["script-src"]))
     receipt = set((public_dir / "script-hashes.txt").read_text().splitlines())
     assert hashes == receipt
     assert shell.executable_hashes and shell.executable_hashes <= hashes <= shell.hashes
+    style_hashes = set(re.findall(r"'sha256-([^']+)'", directives["style-src"]))
+    assert style_hashes == set((public_dir / "style-hashes.txt").read_text().splitlines())
+    assert style_hashes and style_hashes == shell.style_hashes
 
     files = {}
     for asset in (public_dir / "_nuxt").rglob("*"):
@@ -97,6 +112,7 @@ def verify(server, public_dir):
     server.request("/_nuxt/%2e%2e/index.html", expected=404)
     server.request("/_nuxt/script-hashes.txt", expected=404)
     server.request("/script-hashes.txt", expected=404)
+    server.request("/style-hashes.txt", expected=404)
     server.request("/assets/workspace.js", expected=404)
     server.request("/api/projects", expected=401)
     print("PASS: Nuxt shell, exact bootstrap receipt, typed immutable assets and protected same-origin API")
