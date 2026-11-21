@@ -162,6 +162,41 @@
                   <dl id="case-financial-data" class="case-financial-data"></dl>
                 </section>
 
+
+                <section class="pane case-files" aria-labelledby="case-files-title">
+                  <div class="pane-heading"><h3 id="case-files-title">Original case files</h3></div>
+                  <p id="case-files-status" class="support pane-message" role="status"></p>
+                  <ul id="case-files-list" class="case-file-list"></ul>
+                  <p id="case-files-error" class="error pane-message" role="alert" hidden></p>
+                  <div id="case-files-retry-bar" class="pane-footer" hidden>
+                    <button id="case-files-retry" type="button" class="button secondary">Reload files</button>
+                  </div>
+                  <details id="case-file-upload" class="case-file-upload" hidden>
+                    <summary>Add a file</summary>
+                    <form id="case-file-form" class="form">
+                      <fieldset id="case-file-fields">
+                        <div class="field">
+                          <label for="case-file">Original file</label>
+                          <input id="case-file" type="file" required aria-describedby="case-file-help"
+                            accept=".pdf,.png,.jpg,.jpeg,.txt,application/pdf,image/png,image/jpeg,text/plain">
+                          <p id="case-file-help" class="support">PDF, PNG, JPEG or TXT. Maximum 5 MiB.</p>
+                        </div>
+                        <div class="field">
+                          <label for="case-file-caption">Caption <span class="optional">optional</span></label>
+                          <input id="case-file-caption" type="text">
+                        </div>
+                        <div class="field">
+                          <label for="case-file-access">File visibility</label>
+                          <select id="case-file-access"></select>
+                        </div>
+                      </fieldset>
+                      <p id="case-file-upload-error" class="error" role="alert" hidden></p>
+                      <button id="case-file-submit" type="submit" class="button primary">Upload file</button>
+                    </form>
+                  </details>
+                  <p id="case-file-confirmation" class="sr-only" role="status"></p>
+                </section>
+
                 <div class="case-detail-grid">
                   <section id="case-actions" class="pane case-actions" aria-labelledby="case-actions-title" hidden>
                     <div class="pane-heading"><h3 id="case-actions-title">Record an action</h3></div>

@@ -64,7 +64,7 @@ class Workspace:
 
 
 @contextmanager
-def workspace(port=None):
+def workspace(port=None, *, backup=None):
     target = ROOT / "target"
     subprocess.run(["cargo", "build", "--locked", "--target-dir", target], cwd=ROOT, check=True)
     environment = {key: value for key, value in os.environ.items() if not key.startswith(("PG", "DUCTDELTA_"))}
@@ -74,11 +74,24 @@ def workspace(port=None):
                 listener.bind(("127.0.0.1", 0))
                 port = listener.getsockname()[1]
         server = Workspace(database_socket, port, environment)
-        for migration in sorted((ROOT / "migrations").glob("*.sql")):
-            server.sql(migration.read_text())
+        if backup is None:
+            for migration in sorted((ROOT / "migrations").glob("*.sql")):
+                server.sql(migration.read_text())
+            server.sql((ROOT / "tests/fixture.sql").read_text())
+        else:
+            server.sql(
+                "CREATE ROLE ductdelta_owner NOLOGIN;"
+                "CREATE ROLE ductdelta_runtime NOLOGIN;"
+                "CREATE ROLE ductdelta_web_runtime NOLOGIN;"
+            )
         server.sql((ROOT / "tests/roles.sql").read_text())
-        server.sql((ROOT / "tests/fixture.sql").read_text())
         server.sql("CREATE ROLE dd_web LOGIN IN ROLE ductdelta_web_runtime;")
+        if backup is not None:
+            subprocess.run(
+                [BIN / "pg_restore", "--exit-on-error", "--dbname",
+                 connection(database_socket, "dd_admin"), backup],
+                env=environment, check=True, timeout=25,
+            )
         with subprocess.Popen(
             [CLI, "serve"], cwd=ROOT, env={
                 **environment,
