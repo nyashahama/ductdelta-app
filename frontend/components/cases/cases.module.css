@@ -1,0 +1,152 @@
+.workspace {
+  display: grid;
+  gap: 1.15rem;
+  min-width: 0;
+}
+
+.heading, .panelBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .7rem 1rem;
+}
+
+.heading h1, .cover h2, .panelBar h2, .panelBar h3, .panelHeading { margin: 0; }
+.heading p { margin: .35rem 0 0; }
+
+.workspaceGrid {
+  display: grid;
+  grid-template-columns: minmax(13rem, .84fr) minmax(0, 3fr);
+  align-items: start;
+  gap: 1rem;
+}
+
+.register, .detail, .section { min-width: 0; }
+.detail { display: grid; gap: .85rem; }
+
+.panelBar, .panelHeading {
+  padding: .85rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.panelBar h2, .panelBar h3, .panelHeading { font-size: .98rem; }
+.panelBody { display: grid; gap: .7rem; padding: 1rem; }
+.panelBody > button, .actionForm > button { justify-self: start; }
+.panelBody p, .notice { margin: 0; }
+.notice { color: var(--muted); padding: .95rem 1rem; overflow-wrap: anywhere; }
+.caseList, .timeline, .files { list-style: none; margin: 0; padding: 0; }
+.caseList { max-height: 60vh; overflow: auto; }
+.caseList li + li, .files li + li, .timeline li + li { border-top: 1px solid var(--border); }
+
+.caseList button {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: .45rem;
+  width: 100%;
+  padding: .72rem .85rem;
+  border: 0;
+  border-inline-start: 3px solid transparent;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.caseList button[aria-pressed="true"] {
+  border-inline-start-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+.caseList button:hover { background-color: var(--surface-raised); }
+.caseList button:focus-visible { outline-offset: -3px; }
+.caseList button > span:first-child { font-weight: 640; overflow-wrap: anywhere; }
+.caseList button > span:last-child { flex: none; }
+.closed { color: var(--muted); }
+.open { color: var(--accent); }
+
+.cover { display: grid; gap: .65rem; padding: .95rem 1rem; }
+.cover > div { display: flex; flex-wrap: wrap; gap: .55rem; align-items: center; }
+.cover h2 { font-size: clamp(1.28rem, 2vw, 1.75rem); line-height: 1.15; overflow-wrap: anywhere; }
+.cover dl, .financial, .eventFields { margin: 0; }
+.cover dl { display: flex; gap: .55rem 1.2rem; flex-wrap: wrap; font-size: .85rem; }
+.cover dl > div { min-width: 0; }
+.cover dt, .eventFields dt, .financial dt { color: var(--muted); }
+.cover dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.cover button { justify-self: start; }
+
+.financial {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--border);
+}
+
+.financial > div { background: var(--surface); overflow-wrap: anywhere; padding: .68rem .9rem; }
+.financial dt { font-size: .8rem; }
+.financial dd { margin: .12rem 0 0; font-size: 1.1rem; font-weight: 680; font-variant-numeric: tabular-nums; }
+.financial .outstanding { background: var(--surface-raised); }
+.financial .unrecorded { color: var(--muted); font-size: .9rem; font-weight: 500; }
+
+.eventsColumns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: start; gap: .85rem; }
+.eventsColumns > :only-child { grid-column: 1 / -1; }
+.timeline li { padding: .75rem 1rem; font-size: .9rem; }
+.timeline summary { color: var(--text); cursor: pointer; font-weight: 640; overflow-wrap: anywhere; }
+.timeline time, .fileMeta, .help, .optional { color: var(--muted); font-size: .8rem; font-weight: 450; }
+.timeline time { display: block; margin-inline-start: 1.02rem; }
+.eventFields { display: grid; gap: .45rem; margin-top: .7rem; }
+.eventFields dd, .caption { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.eventTable { overflow-x: auto; margin: .65rem 0; }
+.eventTable table { border-collapse: collapse; min-width: 15rem; width: 100%; }
+.eventTable td, .eventTable th { border-bottom: 1px solid var(--border); padding: .4rem; text-align: start; }
+.eventTable th { color: var(--muted); }
+.help { overflow-wrap: anywhere; margin: 0; }
+
+.actionForm, .formFields, .editLine, .uploadFields { display: grid; gap: .65rem; min-width: 0; }
+.formFields, .editLine { border: 0; padding: 0; margin: 0; }
+.formFields > button, .editLine > button { justify-self: start; }
+.editLine { padding: .65rem; border: 1px solid var(--border); border-radius: .5rem; }
+.editLine p { margin: 0; overflow-wrap: anywhere; }
+.editLine legend { padding-inline: .3rem; font-weight: 630; }
+
+.files li { display: flex; align-items: start; justify-content: space-between; gap: .65rem; padding: .85rem 1rem; }
+.files li > div { min-width: 0; }
+.files li > a { flex: none; text-decoration: none; }
+.fileName { margin: 0; font-weight: 650; overflow-wrap: anywhere; }
+.fileMeta { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .65rem; margin: .2rem 0 0; }
+.caption { font-size: .85rem; margin-top: .3rem; color: var(--muted); }
+.upload { border-top: 1px solid var(--border); padding: .85rem 1rem; }
+.upload summary { cursor: pointer; color: var(--accent); font-weight: 640; }
+.upload .actionForm { margin-top: .75rem; }
+.uploadFields { grid-template-columns: minmax(0, 1fr) minmax(0, .7fr); }
+.confirmation { margin: 0; color: var(--text); padding: .6rem .85rem; }
+
+.dialog {
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: .75rem;
+  width: min(31rem, calc(100% - 2rem));
+  padding: .15rem;
+  max-height: calc(100% - 2rem);
+}
+
+.dialog::backdrop { background: #0009; }
+.dialog h2, .dialog p { margin: 0; }
+.dialogActions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .65rem; }
+
+@media (max-width: 75rem) {
+  .eventsColumns { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 56rem) {
+  .workspaceGrid { grid-template-columns: minmax(0, 1fr); }
+  .caseList { max-height: 27vh; }
+}
+
+@media (max-width: 36rem) {
+  .financial { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .uploadFields { grid-template-columns: minmax(0, 1fr); }
+}
