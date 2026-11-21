@@ -6,15 +6,17 @@ A case can start with an instruction, site condition, substitution or revised do
 
 ## Development
 
-On Linux with Rust 1.94.1, PostgreSQL 18 tools and Python 3, start the synthetic workspace.
+On Linux with Node.js 22.12 or later, Rust 1.94.1, PostgreSQL 18 tools and Python 3, build and start the synthetic workspace.
 
 ```sh
+npm --prefix frontend ci
+npm --prefix frontend run build
 python3 scripts/check_workspace.py --serve
 ```
 
 Open the printed loopback URL and sign in with the synthetic access key. The harness uses a disposable socket-only database. Set `PG_BINDIR` if the PostgreSQL 18 tools are outside `/usr/lib/postgresql/18/bin`. The CLI remains available for [capture and verification](docs/capture.md).
 
-The dashboard uses DuctDelta's own markup and styles, with [Tabler's vertical layout](https://docs.tabler.io/ui/layout/page-layouts) and [table patterns](https://docs.tabler.io/ui/components/table) as references.
+The signed-in workspace uses TanStack Start. The dark project dashboard follows [Nuxt UI Dashboard](https://dashboard-template.nuxt.dev/) as a visual reference. Rust serves the built client, the session and the project API on one origin.
 
 ## Supported workflow
 

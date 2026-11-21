@@ -6,6 +6,7 @@ from contextlib import contextmanager
 import http.client
 import json
 import os
+from pathlib import Path
 import socket
 import subprocess
 import time
@@ -64,7 +65,7 @@ class Workspace:
 
 
 @contextmanager
-def workspace(port=None, *, backup=None):
+def workspace(port=None, *, backup=None, frontend=None):
     target = ROOT / "target"
     subprocess.run(["cargo", "build", "--locked", "--target-dir", target], cwd=ROOT, check=True)
     environment = {key: value for key, value in os.environ.items() if not key.startswith(("PG", "DUCTDELTA_"))}
@@ -97,13 +98,14 @@ def workspace(port=None, *, backup=None):
                 **environment,
                 "DUCTDELTA_DATABASE_URL": connection(database_socket, "dd_web"),
                 "DUCTDELTA_LISTEN": f"127.0.0.1:{port}",
+                **({"DUCTDELTA_WEB_DIST": str(frontend)} if frontend is not None else {}),
             },
         ) as process:
             try:
                 for _ in range(100):
                     assert process.poll() is None, "Workspace stopped before accepting requests."
                     try:
-                        server.request("/")
+                        server.request("/healthz", expected=204)
                         break
                     except ConnectionError:
                         time.sleep(0.03)
@@ -128,8 +130,8 @@ def grant_demo_capabilities(server):
 
 def verify(server):
     path = f"/api/projects/{PROJECT}/observations"
-    html, headers = server.request("/")
-    assert b"DuctDelta" in html and "frame-ancestors" in headers["Content-Security-Policy"]
+    _, headers = server.request("/healthz", expected=204)
+    assert "frame-ancestors" in headers["Content-Security-Policy"]
     server.request("/api/session", expected=401)
     reporter_key = server.key(REPORTER, "Site reporter")
     server.request("/api/session", "POST", {"key": reporter_key}, origin="https://invalid.example", expected=403)
@@ -168,8 +170,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serve", action="store_true", help="leave a synthetic workspace available on loopback")
     parser.add_argument("--port", type=int)
+    parser.add_argument("--frontend", type=Path, default=ROOT / "frontend/dist/client")
     args = parser.parse_args()
-    with workspace(args.port) as server:
+    if args.serve and not (args.frontend / "_shell.html").is_file():
+        parser.error("Run npm ci and npm run build in frontend before starting the workspace.")
+    with workspace(args.port, frontend=args.frontend.resolve() if args.serve else None) as server:
         verify(server)
         if args.serve:
             if server.sql("SELECT to_regclass('ductdelta.project_workflow_grant')"):
