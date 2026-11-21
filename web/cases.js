@@ -166,6 +166,8 @@
   function renderMoney(financial) {
     element("case-financial").hidden = !financial;
     if (!financial) return;
+    message("case-quote-pending", financial.quote_awaiting_decision
+      ? "The latest quote is awaiting a decision." : "");
     element("case-currency").textContent = financial.currency + (financial.basis === "excl_vat" ? " · Excl. VAT" : "");
     for (const [key, label] of Object.entries(moneyLabels)) {
       const value = financial[key];

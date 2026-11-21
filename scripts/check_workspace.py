@@ -102,6 +102,17 @@ def workspace(port=None):
                 process.wait(timeout=10)
 
 
+def grant_demo_capabilities(server):
+    server.sql(
+        "INSERT INTO ductdelta.project_workflow_grant "
+        "(organization_id, project_id, actor_id, capability) "
+        "SELECT organization_id, project_id, actor_id, grants.capability "
+        "FROM ductdelta.project_member CROSS JOIN "
+        "(VALUES ('direction'), ('commercial'), ('finance')) AS grants(capability) "
+        f"WHERE project_id = '{PROJECT}' AND actor_id = '{REPORTER}'"
+    )
+
+
 def verify(server):
     path = f"/api/projects/{PROJECT}/observations"
     html, headers = server.request("/")
@@ -148,6 +159,8 @@ def main():
     with workspace(args.port) as server:
         verify(server)
         if args.serve:
+            if server.sql("SELECT to_regclass('ductdelta.project_workflow_grant')"):
+                grant_demo_capabilities(server)
             key = server.key(REPORTER, "Site reporter")
             print(f"Workspace: {server.origin}\nSynthetic access key: {key}", flush=True)
             while True:

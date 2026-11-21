@@ -3,18 +3,7 @@
 
 from uuid import uuid4
 
-from check_workspace import OTHER_ORGANIZATION, PROJECT, REPORTER, VIEWER, workspace
-
-
-def grant_demo_capabilities(server):
-    server.sql(
-        "INSERT INTO ductdelta.project_workflow_grant "
-        "(organization_id, project_id, actor_id, capability) "
-        "SELECT organization_id, project_id, actor_id, grants.capability "
-        "FROM ductdelta.project_member CROSS JOIN "
-        "(VALUES ('direction'), ('commercial'), ('finance')) AS grants(capability) "
-        f"WHERE project_id = '{PROJECT}' AND actor_id = '{REPORTER}'"
-    )
+from check_workspace import OTHER_ORGANIZATION, PROJECT, REPORTER, VIEWER, grant_demo_capabilities, workspace
 
 
 def verify(server):
