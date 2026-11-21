@@ -149,6 +149,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
                 "/api/projects/{project}/observations/{observation}",
                 routing::get(observation_detail),
             )
+            .merge(crate::company_setup::routes())
             .merge(crate::cases::routes())
             .merge(crate::evidence::routes())
             .merge(crate::overview::routes())
@@ -196,16 +197,16 @@ async fn same_origin(State(workspace): State<Workspace>, request: Request, next:
     response
 }
 
-fn random_key() -> String {
+pub(crate) fn random_key() -> String {
     format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
 }
 
-fn key_digest(key: &str) -> Vec<u8> {
+pub(crate) fn key_digest(key: &str) -> Vec<u8> {
     use sha2::Digest;
     sha2::Sha256::digest(key.as_bytes()).to_vec()
 }
 
-fn valid_key(value: &str) -> bool {
+pub(crate) fn valid_key(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
@@ -224,11 +225,11 @@ pub(crate) fn session(headers: &HeaderMap) -> Reply<Vec<u8>> {
     Err(Rejection(StatusCode::UNAUTHORIZED, "Sign in required."))
 }
 
-fn cookie(workspace: &Workspace, token: &str, age: u32) -> Response {
+pub(crate) fn session_cookie(workspace: &Workspace, token: &str, age: u32) -> HeaderValue {
     let secure = if workspace.secure { "; Secure" } else { "" };
     let cookie =
         format!("dd_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={age}{secure}");
-    (StatusCode::NO_CONTENT, [(header::SET_COOKIE, cookie)]).into_response()
+    HeaderValue::from_str(&cookie).expect("session cookie contains fixed attributes and hex tokens")
 }
 
 #[derive(Deserialize)]
@@ -262,7 +263,14 @@ async fn sign_in(State(workspace): State<Workspace>, Json(input): Json<Login>) -
             "The access key is invalid.",
         ));
     }
-    Ok(cookie(&workspace, &token, 43_200))
+    Ok((
+        StatusCode::NO_CONTENT,
+        [(
+            header::SET_COOKIE,
+            session_cookie(&workspace, &token, 43_200),
+        )],
+    )
+        .into_response())
 }
 
 async fn sign_out(State(workspace): State<Workspace>, headers: HeaderMap) -> Reply<Response> {
@@ -271,7 +279,11 @@ async fn sign_out(State(workspace): State<Workspace>, headers: HeaderMap) -> Rep
             .query(move |database| database.execute("SELECT ductdelta.web_logout($1)", &[&digest]))
             .await?;
     }
-    Ok(cookie(&workspace, "", 0))
+    Ok((
+        StatusCode::NO_CONTENT,
+        [(header::SET_COOKIE, session_cookie(&workspace, "", 0))],
+    )
+        .into_response())
 }
 
 async fn session_info(
