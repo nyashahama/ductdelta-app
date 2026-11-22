@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ApiError, api, reportError, requestJson } from '~/utils/api'
+import CompanyAccessHistory from '~/components/company/CompanyAccessHistory.vue'
 import MemberAccess from '~/components/company/MemberAccess.vue'
 import type { CompanyProject, Member, Team } from '~/components/company/access'
 
@@ -14,9 +15,10 @@ const error = ref('')
 const projectName = ref('')
 const inviteName = ref('')
 const inviteRole = ref<Member['role']>('member')
-const inviteLink = ref<{ id: string, url: string }>()
+const inviteLink = ref<{ id: string, url: string, expiresAt: string }>()
 const copied = ref('')
 const editing = ref<Member>()
+const historyRevision = ref(0)
 let projectDraft: { name: string, operation_id: string } | undefined
 const roles = [
   { label: 'Team member', value: 'member' },
@@ -37,6 +39,7 @@ async function refresh() {
     if (inviteLink.value && !companyTeam.invitations.some(invite => invite.id === inviteLink.value?.id)) {
       inviteLink.value = undefined
     }
+    historyRevision.value++
   } catch (cause) {
     if (cause instanceof ApiError && cause.status === 404) {
       projects.value = []
@@ -80,11 +83,11 @@ function createProject() {
 
 function invite() {
   return write(async () => {
-    const result = await api<{ id: string, token: string }>(path + '/invitations', requestJson({
+    const result = await api<{ id: string, token: string, expires_at: string }>(path + '/invitations', requestJson({
       name: inviteName.value.trim(),
       role: inviteRole.value
     }))
-    inviteLink.value = { id: result.id, url: location.origin + '/#invite=' + result.token }
+    inviteLink.value = { id: result.id, url: location.origin + '/#invite=' + result.token, expiresAt: result.expires_at }
     inviteName.value = ''
     copied.value = ''
   })
@@ -212,7 +215,7 @@ async function memberChanged() {
               />
             </UFormField>
             <p class="text-sm text-muted">
-              Send this single-use link privately. It expires in seven days.
+              Send this single-use link privately. Expires {{ expiry(inviteLink.expiresAt) }}.
             </p>
             <UButton
               label="Copy invitation link"
@@ -277,6 +280,7 @@ async function memberChanged() {
         </ul>
       </UCard>
     </div>
+    <CompanyAccessHistory v-if="team" :company-id="companyId" :revision="historyRevision" />
     <MemberAccess
       v-if="editing && team"
       :member="team.members.find(member => member.id === editing?.id) ?? editing"
