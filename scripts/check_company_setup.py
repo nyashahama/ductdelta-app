@@ -2,8 +2,9 @@
 """Verify company enrollment and project creation from an empty installation."""
 
 import secrets
+import subprocess
 
-from check_workspace import REPORTER, workspace
+from check_workspace import CLI, OTHER_ORGANIZATION, REPORTER, VIEWER, connection, workspace
 
 
 def verify(server):
@@ -67,12 +68,31 @@ def verify_upgrade(server):
     assert companies and all(company["role"] == "member" for company in companies)
     path = f"/api/companies/{companies[0]['id']}/projects"
     server.request(path, cookie=login, expected=404)
-    server.sql(
-        "UPDATE ductdelta.organization_member SET role = 'admin' "
-        f"WHERE organization_id = '{companies[0]['id']}' AND actor_id = '{REPORTER}';"
-    )
+    company = companies[0]["id"]
+    server.sql("CREATE ROLE dd_bootstrap LOGIN IN ROLE ductdelta_company_bootstrap;")
+
+    def appoint(actor, database_login="dd_bootstrap"):
+        return subprocess.run(
+            [CLI, "appoint-first-admin", company, actor],
+            env={
+                **server.environment,
+                "DUCTDELTA_DATABASE_URL": connection(server.database_socket, database_login),
+            },
+            capture_output=True, text=True, timeout=10,
+        )
+
+    assert appoint(REPORTER, "dd_web").returncode == 1
+    assert appoint(OTHER_ORGANIZATION).returncode == 1
+    server.request(path, cookie=login, expected=404)
+    first = appoint(REPORTER)
+    assert first.returncode == 0, first.stderr
+    assert appoint(REPORTER).returncode == 0
+    assert appoint(VIEWER).returncode == 1
+    assert server.sql("SELECT count(*) FROM ductdelta.first_company_admin WHERE appointed_by = 'dd_bootstrap';") == "1"
+    assert server.request("/api/projects", cookie=login)[0] == projects
+    assert server.request("/api/companies", cookie=login)[0][0]["role"] == "admin"
     assert server.request(path, cookie=login)[0]
-    print("PASS: populated upgrade preserves project access and requires explicit first-admin appointment")
+    print("PASS: populated upgrade preserves project access; operator appoints one legacy administrator")
 
 
 if __name__ == "__main__":

@@ -94,6 +94,7 @@ def workspace(
                 "CREATE ROLE ductdelta_owner NOLOGIN;"
                 "CREATE ROLE ductdelta_runtime NOLOGIN;"
                 "CREATE ROLE ductdelta_web_runtime NOLOGIN;"
+                "CREATE ROLE ductdelta_company_bootstrap NOLOGIN;"
             )
         server.sql((ROOT / "tests/roles.sql").read_text())
         server.sql("CREATE ROLE dd_web LOGIN IN ROLE ductdelta_web_runtime;")

@@ -10,6 +10,7 @@ use axum::http::header;
 use axum::response::IntoResponse;
 use axum::response::Response;
 use axum::routing;
+use postgres::Client;
 use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
@@ -32,6 +33,24 @@ pub(crate) fn routes() -> Router<Workspace> {
             "/api/companies/{company}/projects",
             routing::get(projects).post(create_project),
         )
+}
+
+pub(crate) fn appoint_first_admin(
+    database: &mut Client,
+    company: Uuid,
+    actor: Uuid,
+) -> Result<(), &'static str> {
+    database
+        .execute(
+            "SELECT ductdelta.appoint_first_company_admin($1, $2)",
+            &[&company, &actor],
+        )
+        .map_err(|error| match error.code().map(|code| code.code()) {
+            Some("DD002") => "The company already has an administrator.",
+            Some("42501") => "The company, member, or appointment permission is unavailable.",
+            _ => "Could not appoint the company administrator.",
+        })?;
+    Ok(())
 }
 
 pub(crate) struct EnrollmentKeys {
