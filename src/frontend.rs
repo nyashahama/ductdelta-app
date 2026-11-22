@@ -182,14 +182,23 @@ pub(crate) fn routes() -> Result<Router<Workspace>, &'static str> {
             "/_nuxt/{*path}",
             routing::get(move |Path(path): Path<String>| async move {
                 match frontend.assets.get(&path) {
-                    Some(asset) => (
-                        [
-                            (header::CONTENT_TYPE, asset.media_type),
-                            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
-                        ],
-                        asset.bytes.clone(),
-                    )
-                        .into_response(),
+                    Some(asset) => {
+                        let mut response = (
+                            [
+                                (header::CONTENT_TYPE, asset.media_type),
+                                (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+                            ],
+                            asset.bytes.clone(),
+                        )
+                            .into_response();
+                        if asset.media_type == "font/woff2" && path.starts_with("fonts/") {
+                            response.headers_mut().insert(
+                                header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                                HeaderValue::from_static("*"),
+                            );
+                        }
+                        response
+                    }
                     None => StatusCode::NOT_FOUND.into_response(),
                 }
             }),

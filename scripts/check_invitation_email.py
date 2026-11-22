@@ -105,6 +105,10 @@ def verify(server, requests, release):
     assert "Basin &amp; &lt;Mechanical&gt;" in html and "<Mechanical>" not in html
     assert f'href="{url}"' in html and "Accept invitation" in html
     assert 'href="mailto:support@example.test"' in html
+    app_css = (ROOT / "frontend/app/assets/css/main.css").read_text()
+    font_stack = next(line.partition(": ")[2].rstrip(";") for line in app_css.splitlines() if "--font-sans:" in line)
+    assert f"font-family:{font_stack}" in html, "Use the workspace font stack in the email"
+    assert f"{server.origin}/_nuxt/fonts/public-sans-2.001/public-sans-normal-latin.woff2" in html
     token = url.split("=", 1)[1]
     assert token not in json.dumps(server.request(invitations, cookie=admin)[0])
     result, _ = accept(server, token)

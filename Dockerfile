@@ -7,6 +7,7 @@ RUN pnpm install --frozen-lockfile && pnpm run build
 FROM rust:1.94.1-bookworm AS backend
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
+COPY frontend/app/assets/css/public-sans.css frontend/app/assets/css/
 COPY src/ src/
 RUN cargo build --release --locked
 

@@ -35,10 +35,11 @@ pub(crate) struct InvitationMailer {
     signing_key: String,
     sender: String,
     reply_to: Option<String>,
+    origin: String,
 }
 
 impl InvitationMailer {
-    pub(crate) fn from_env(secure: bool) -> Result<Option<Self>, &'static str> {
+    pub(crate) fn from_env(origin: &str, secure: bool) -> Result<Option<Self>, &'static str> {
         let (key, sender, signing, endpoint) = (
             env::var_os("DUCTDELTA_RESEND_API_KEY"),
             env::var_os("DUCTDELTA_RESEND_FROM"),
@@ -95,6 +96,7 @@ impl InvitationMailer {
             signing_key,
             sender,
             reply_to,
+            origin: origin.to_owned(),
         }))
     }
 
@@ -181,7 +183,7 @@ impl InvitationMailer {
             "text": message.text,
         });
         let mut payload = legacy.clone();
-        payload["html"] = message.layout.render(message.reply_to).into();
+        payload["html"] = message.layout.render(&self.origin, message.reply_to).into();
         if let Some(reply_to) = message.reply_to {
             payload["reply_to"] = reply_to.into();
         }

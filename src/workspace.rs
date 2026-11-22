@@ -180,7 +180,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
                 .ok_or("Set DUCTDELTA_COMPANY_SETUP_CODE to a random value with 64 hex digits.")
         })
         .transpose()?;
-    let invitation_mailer = InvitationMailer::from_env(secure)?.map(Arc::new);
+    let invitation_mailer = InvitationMailer::from_env(&origin, secure)?.map(Arc::new);
     if company_setup_code.is_none() {
         if railway {
             return Err("Set DUCTDELTA_COMPANY_SETUP_CODE for the Railway deployment.");

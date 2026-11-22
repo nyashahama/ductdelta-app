@@ -13,7 +13,11 @@ pub(crate) struct EmailAction<'a> {
 }
 
 impl EmailLayout<'_> {
-    pub(crate) fn render(&self, reply_to: Option<&str>) -> String {
+    pub(crate) fn render(&self, origin: &str, reply_to: Option<&str>) -> String {
+        let font_styles = include_str!("../frontend/app/assets/css/public-sans.css").replace(
+            "url('/_nuxt/fonts/",
+            &format!("url('{}/_nuxt/fonts/", origin.replace('\'', "%27")),
+        );
         let action = self.action.as_ref().map_or_else(String::new, |action| {
             format!(
                 concat!(
@@ -39,6 +43,7 @@ impl EmailLayout<'_> {
         });
         format!(
             include_str!("email_layout.html"),
+            font_styles = font_styles,
             heading = escape(self.heading),
             message = escape(self.message),
             detail = escape(self.detail),

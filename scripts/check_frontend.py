@@ -113,12 +113,17 @@ def verify(server, public_dir):
                 paths = re.findall(r"url\(['\"]?([^'\"()]+\.woff2)['\"]?\)", rule)
                 font_urls.update(urljoin(stylesheet, path) for path in paths)
     assert font_urls and font_urls <= files.keys(), "Public Sans must ship with the workspace"
+    assert "/_nuxt/fonts/public-sans-2.001/public-sans-normal-latin.woff2" in font_urls
     for url, asset in files.items():
         asset_bytes, asset_headers = server.request(url)
         assert asset_bytes == asset.read_bytes(), url
         assert asset_headers["Content-Type"] == ASSET_TYPES[asset.suffix], url
         assert "immutable" in asset_headers["Cache-Control"], url
         assert asset_headers["X-Content-Type-Options"] == "nosniff", url
+        if url in font_urls:
+            assert asset_headers["Access-Control-Allow-Origin"] == "*", url
+        else:
+            assert "Access-Control-Allow-Origin" not in asset_headers, url
 
     server.request("/_nuxt/unknown.js", expected=404)
     server.request("/_nuxt/%2e%2e/index.html", expected=404)
