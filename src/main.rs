@@ -8,6 +8,7 @@ mod invitation_mailer;
 mod observation;
 mod overview;
 mod postgres_pool;
+mod request_trace;
 mod workspace;
 
 use std::io::Write;

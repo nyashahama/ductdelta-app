@@ -46,6 +46,8 @@ The server binds to loopback at `127.0.0.1:3000` by default. Configure a loopbac
 
 The server reuses up to 16 PostgreSQL connections per process. Requests that need a database connection receive HTTP 503 while all 16 slots are occupied. A connection lost during capture can leave the result unknown. If you retry the capture, use the original operation UUID and payload. Run `python3 scripts/check_workspace.py` to verify reuse, permission revocation, recovery after a disconnect, and the concurrency limit.
 
+Use the `X-Request-Id` response header to find a request in the server log. HTTPS enables JSON request logs by default. Set `DUCTDELTA_TRACE_REQUESTS=1` to enable them on loopback, or `0` to disable them. Logs include the route template, status and elapsed milliseconds. Run `python3 scripts/check_request_trace.py` to check correlation and log privacy.
+
 ### Invitation email
 
 Company administrators can create a private link or email an invitation through Resend. For email, configure `DUCTDELTA_RESEND_API_KEY` with sending access, `DUCTDELTA_RESEND_FROM` with an address on a verified domain, and `DUCTDELTA_INVITE_SIGNING_KEY` with a persistent 32-byte secret encoded as 64 hex digits. Keep the signing key in the deployment secret store. Changing it prevents already queued messages from being sent. Delivered invitation links remain valid until use, cancellation, or expiry.

@@ -161,6 +161,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
     {
         return Err("Use an HTTPS origin or the exact local listener URL.");
     }
+    let trace_requests = crate::request_trace::enabled(secure)?;
     let mut database = crate::database_config()?;
     database.connect_timeout(Duration::from_secs(3));
     database.options("-c statement_timeout=8000 -c lock_timeout=5000");
@@ -228,6 +229,9 @@ pub(crate) fn serve() -> Result<(), &'static str> {
                 workspace.clone(),
                 same_origin,
             ))
+            .layer(middleware::from_fn(move |request, next| {
+                crate::request_trace::record(trace_requests, request, next)
+            }))
             .with_state(workspace);
         let listener = TcpListener::bind(listen)
             .await
