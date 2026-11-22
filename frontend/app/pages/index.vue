@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AccountSessions from '~/components/AccountSessions.vue'
 import CompanySettings from '~/components/company/CompanySettings.vue'
 import CasesWorkspace from '~/components/cases/CasesWorkspace.vue'
 import ObservationWorkspace from '~/components/observations/ObservationWorkspace.vue'
@@ -22,7 +23,8 @@ const title = computed(() => ({
   overview: 'Project overview',
   observations: 'Observations',
   cases: 'Change cases',
-  company: 'Company settings'
+  company: 'Company settings',
+  sessions: 'Account sessions'
 })[view.value])
 const selectedCase = computed(() => recordId(route.query.caseId))
 const selectedObservation = computed(() => recordId(route.query.observationId))
@@ -177,7 +179,8 @@ watch([() => project.value?.id, view, period, version], ([id, page], _, onCleanu
     </template>
 
     <template #body>
-      <CompanySettings v-if="view === 'company'" />
+      <AccountSessions v-if="view === 'sessions'" />
+      <CompanySettings v-else-if="view === 'company'" />
       <UAlert
         v-else-if="error"
         role="alert"

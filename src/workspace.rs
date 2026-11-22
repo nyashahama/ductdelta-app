@@ -218,6 +218,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
                 "/api/projects/{project}/observations/{observation}",
                 routing::get(observation_detail),
             )
+            .merge(crate::account_sessions::routes())
             .merge(crate::company_setup::routes())
             .merge(crate::company_team::routes())
             .merge(crate::company_access_history::routes())

@@ -65,7 +65,7 @@ const groups = computed(() => [{
 
 async function selectProject(id: string) {
   open.value = false
-  await navigateTo(target(view.value === 'company' ? 'overview' : view.value, id))
+  await navigateTo(target(view.value === 'company' || view.value === 'sessions' ? 'overview' : view.value, id))
 }
 
 function readInvitation(hash: string) {
@@ -148,6 +148,7 @@ onMounted(async () => {
           :collapsed="collapsed"
           :name="session.name"
           :signing="signing"
+          @open-sessions="open = false"
           @sign-out="signOut"
         />
       </template>
