@@ -1,10 +1,11 @@
 import { dispositions, eventsOf, eventTitle, formatDecimal, outcomes, unreversedAllocations, type ActionKind, type CaseEvent, type CaseRecord } from './case-data'
+import type { NoticeRule } from './notice-rule'
 
 export type Choice = { value: string, label: string }
 export type ActionField = {
   name: string
   label: string
-  input?: 'money' | 'textarea' | 'datetime-local'
+  input?: 'money' | 'textarea' | 'datetime-local' | 'timestamp'
   optional?: boolean
   value?: string
   options?: Choice[]
@@ -25,10 +26,23 @@ function linked(name: string, label: string, events: CaseEvent[], settings: Pick
   return { name, label, options: [...events].reverse().map(event => ({ value: event.id, label: eventTitle(event) })), ...settings }
 }
 
-export function actionFields(kind: ActionKind, record: CaseRecord): ActionField[] {
+export function actionFields(kind: ActionKind, record: CaseRecord, rule?: NoticeRule): ActionField[] {
   const agreement = { ...text('agreement', 'Agreement reference'), value: record.agreement ?? undefined, readonly: !!record.agreement }
   switch (kind) {
     case 'notice':
+      if (rule) {
+        return [
+          reference('Notice reference'),
+          paragraph('body', 'Notice text', 12000),
+          { name: 'trigger_at', label: 'Trigger date, time and offset', input: 'timestamp', limit: 40 },
+          ...(rule.deadline_mode === 'manual'
+            ? [
+                { name: 'due_at', label: 'Deadline date, time and offset', input: 'timestamp' as const, limit: 40 },
+                paragraph('deadline_basis', 'How the deadline was determined', 4000)
+              ]
+            : [])
+        ]
+      }
       return [reference('Notice reference'), agreement, paragraph('body', 'Notice text', 12000),
         { name: 'due_at', label: 'Due date and time', input: 'datetime-local', optional: true }]
     case 'notice_dispatch':

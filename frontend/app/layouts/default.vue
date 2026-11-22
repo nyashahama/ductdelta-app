@@ -53,6 +53,9 @@ const links = computed<NavigationMenuItem[]>(() => ([
   { label: 'Overview', icon: 'i-lucide-house', to: target('overview'), active: view.value === 'overview' },
   { label: 'Observations', icon: 'i-lucide-clipboard-list', to: target('observations'), active: view.value === 'observations' },
   { label: 'Change cases', icon: 'i-lucide-folders', to: target('cases'), active: view.value === 'cases' },
+  ...(project.value
+    ? [{ label: 'Notice rules', icon: 'i-lucide-scroll-text', to: target('notice-rules'), active: view.value === 'notice-rules' }]
+    : []),
   ...(companies.value.some(company => company.role === 'admin')
     ? [{ label: 'Company settings', icon: 'i-lucide-building-2', to: target('company'), active: view.value === 'company' }]
     : [])
