@@ -75,6 +75,14 @@ impl From<Error> for Rejection {
                 StatusCode::TOO_MANY_REQUESTS,
                 "This company sent too many invitations. Try again later.",
             ),
+            Some("DD005") => Self(
+                StatusCode::CONFLICT,
+                "The notice rule changed. Refresh the rule and review it before trying again.",
+            ),
+            Some("DD006") => Self(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "The local cutoff does not exist in this time zone. Ask an administrator to publish a manual deadline rule.",
+            ),
             Some("DD001" | "40001" | "23505") => Self(
                 StatusCode::CONFLICT,
                 "The operation conflicts with a saved record.",
@@ -233,6 +241,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
             .merge(crate::company_team::routes())
             .merge(crate::company_access_history::routes())
             .merge(crate::cases::routes())
+            .merge(crate::notice_rules::routes())
             .merge(crate::evidence::routes())
             .merge(crate::overview::routes())
             .layer(DefaultBodyLimit::max(64 * 1024))

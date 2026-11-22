@@ -91,6 +91,7 @@ jobs:
           python3 scripts/check_request_trace.py
           python3 scripts/check_workflow.py
           python3 scripts/check_case_http.py
+          python3 scripts/check_notice_rules.py
           python3 scripts/check_disputed_closeout.py
           python3 scripts/check_certificate_offsets.py
           python3 scripts/check_shared_receipts.py
