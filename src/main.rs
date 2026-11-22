@@ -5,6 +5,7 @@ mod evidence;
 mod frontend;
 mod observation;
 mod overview;
+mod postgres_pool;
 mod workspace;
 
 use std::io::Write;
