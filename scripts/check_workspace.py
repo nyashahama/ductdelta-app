@@ -69,7 +69,7 @@ class Workspace:
 @contextmanager
 def workspace(
     port=None, *, backup=None, frontend=None, seed=True, seed_before=None, before_migration=None,
-    service_env=None,
+    service_env=None, service_stderr=None,
 ):
     target = ROOT / "target"
     subprocess.run(["cargo", "build", "--locked", "--target-dir", target], cwd=ROOT, check=True)
@@ -94,6 +94,7 @@ def workspace(
                 "CREATE ROLE ductdelta_owner NOLOGIN;"
                 "CREATE ROLE ductdelta_runtime NOLOGIN;"
                 "CREATE ROLE ductdelta_web_runtime NOLOGIN;"
+                "CREATE ROLE ductdelta_company_bootstrap NOLOGIN;"
             )
         server.sql((ROOT / "tests/roles.sql").read_text())
         server.sql("CREATE ROLE dd_web LOGIN IN ROLE ductdelta_web_runtime;")
@@ -104,7 +105,7 @@ def workspace(
                 env=environment, check=True, timeout=25,
             )
         with subprocess.Popen(
-            [CLI, "serve"], cwd=ROOT, env={
+            [CLI, "serve"], cwd=ROOT, stderr=service_stderr, env={
                 **environment,
                 **(service_env or {}),
                 "DUCTDELTA_DATABASE_URL": (

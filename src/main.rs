@@ -8,6 +8,7 @@ mod invitation_mailer;
 mod observation;
 mod overview;
 mod postgres_pool;
+mod request_trace;
 mod workspace;
 
 use std::io::Write;
@@ -26,6 +27,7 @@ const USAGE: &str = "Usage:
   ductdelta show PROJECT_UUID OBSERVATION_UUID
   ductdelta serve
   ductdelta issue-key ACTOR_UUID DISPLAY_NAME
+  ductdelta appoint-first-admin COMPANY_UUID ACTOR_UUID
 
 Use an RFC 3339 observation time with an offset, or - if the time is unknown.
 Set DUCTDELTA_DATABASE_URL to a PostgreSQL connection on a local Unix socket.";
@@ -58,6 +60,12 @@ fn run() -> Result<(), &'static str> {
             let actor = Uuid::parse_str(actor).map_err(|_| "Invalid actor UUID.")?;
             let key = workspace::issue_key(&mut connect()?, actor, name)?;
             writeln!(output, "{key}")
+        }
+        [command, company, actor] if command == "appoint-first-admin" => {
+            let company = Uuid::parse_str(company).map_err(|_| "Invalid company UUID.")?;
+            let actor = Uuid::parse_str(actor).map_err(|_| "Invalid actor UUID.")?;
+            company_setup::appoint_first_admin(&mut connect()?, company, actor)?;
+            writeln!(output, "Company administrator appointed.")
         }
         [command, project, operation, observed_at, location @ ..]
             if command == "capture" && location.len() <= 1 =>

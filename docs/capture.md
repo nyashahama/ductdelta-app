@@ -38,13 +38,15 @@ Apply the migrations in number order. Build the Nuxt workspace and set `DUCTDELT
 
 New companies and their members enroll in the browser. Company administrators share one-time invitation links privately. Each browser-enrolled user keeps their recovery key in a separate safe place. Recovery replaces both keys and invalidates earlier sessions.
 
-For an upgraded installation, migration 0008 preserves project membership and creates company membership without assigning admin authority. A deployment operator explicitly designates the first administrator of each pre-existing company in `ductdelta.organization_member` after verifying their authority. The operator can issue a temporary sign-in key for a legacy actor with `ductdelta issue-key ACTOR_UUID DISPLAY_NAME` and deliver it privately.
+For an upgraded installation, migration 0008 preserves project membership and creates company membership without assigning admin authority. After verifying the member's authority, a deployment operator with `ductdelta_company_bootstrap` can run `ductdelta appoint-first-admin COMPANY_UUID ACTOR_UUID`. This applies once per upgraded company and records the operator and time. The operator can issue a temporary sign-in key for a legacy actor with `ductdelta issue-key ACTOR_UUID DISPLAY_NAME` and deliver it privately.
 
 Company administrators can choose a default invitation lifetime from 1 to 14 days in Company settings. The initial default is 7 days. Saved changes apply to invitations issued afterward. Access history records who made invitation, company role and project access changes from migration 0014 onward. It includes the project creator's first access grant. Run `python3 scripts/check_company_access_history.py` to verify the settings, access history and preservation of a pre-upgrade invitation.
 
 The server binds to loopback at `127.0.0.1:3000` by default. Configure a loopback `DUCTDELTA_LISTEN` and the exact public HTTPS `DUCTDELTA_ORIGIN` for a TLS reverse proxy. Preserve the configured Host header and apply request time and rate limits at the proxy. The local demo uses HTTP on its exact loopback address only.
 
 The server reuses up to 16 PostgreSQL connections per process. Requests that need a database connection receive HTTP 503 while all 16 slots are occupied. A connection lost during capture can leave the result unknown. If you retry the capture, use the original operation UUID and payload. Run `python3 scripts/check_workspace.py` to verify reuse, permission revocation, recovery after a disconnect, and the concurrency limit.
+
+Use the `X-Request-Id` response header to find a request in the server log. HTTPS enables JSON request logs by default. Set `DUCTDELTA_TRACE_REQUESTS=1` to enable them on loopback, or `0` to disable them. Logs include the route template, status and elapsed milliseconds. Run `python3 scripts/check_request_trace.py` to check correlation and log privacy.
 
 ### Invitation email
 
