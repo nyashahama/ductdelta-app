@@ -41,6 +41,15 @@ fn request(port: u16, method: &str, host: &str, path: &str) -> String {
     .unwrap();
     let mut response = String::new();
     stream.read_to_string(&mut response).unwrap();
+    assert!(
+        response
+            .split_once("\r\n\r\n")
+            .unwrap()
+            .0
+            .lines()
+            .any(|line| line.eq_ignore_ascii_case("strict-transport-security: max-age=31536000")),
+        "HTTPS responses must instruct the browser to keep using HTTPS"
+    );
     response.lines().next().unwrap().to_owned()
 }
 
@@ -60,6 +69,10 @@ fn railway_probes_database_and_keeps_app_requests_same_origin() {
         thread::sleep(Duration::from_millis(20));
     }
 
+    assert_eq!(
+        request(port, "GET", "ductdelta.example", "/api/session"),
+        "HTTP/1.1 401 Unauthorized"
+    );
     assert_eq!(
         request(port, "GET", "healthcheck.railway.app", "/api/session"),
         "HTTP/1.1 403 Forbidden"

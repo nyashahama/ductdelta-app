@@ -145,6 +145,7 @@ def grant_demo_capabilities(server):
 def verify(server):
     path = f"/api/projects/{PROJECT}/observations"
     _, headers = server.request("/healthz", expected=204)
+    assert "Strict-Transport-Security" not in headers
     assert "frame-ancestors" in headers["Content-Security-Policy"]
     server.request("/api/session", expected=401)
     reporter_key = server.key(REPORTER, "Site reporter")
@@ -178,6 +179,19 @@ def verify(server):
     server.request(path, cookie=reporter, expected=401)
     server.request("/api/session", "POST", {"key": reporter_key}, expected=401)
     print("PASS: same-origin sign-in, session rotation/logout, scoped capture and tamper-safe retries over HTTP")
+
+
+def verify_database_readiness(server):
+    finish_mail = "ductdelta.finish_activity_email(uuid, integer, uuid, integer)"
+    server.sql(f"REVOKE EXECUTE ON FUNCTION {finish_mail} FROM ductdelta_web_runtime")
+    server.request("/healthz", expected=503)
+    server.sql(f"GRANT EXECUTE ON FUNCTION {finish_mail} TO ductdelta_web_runtime")
+    server.request("/healthz", expected=204)
+    server.sql("ALTER ROLE dd_web BYPASSRLS")
+    server.request("/healthz", expected=503)
+    server.sql("ALTER ROLE dd_web NOBYPASSRLS")
+    server.request("/healthz", expected=204)
+    print("PASS: readiness rejects missing mail permissions and a database login that can bypass row policies")
 
 
 def verify_connection_reuse(server):
@@ -287,6 +301,7 @@ def main():
         if not args.empty:
             verify(server)
         if not args.serve:
+            verify_database_readiness(server)
             verify_connection_reuse(server)
             verify_connection_limit(server)
             verify_interrupted_capture(server)

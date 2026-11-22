@@ -273,18 +273,19 @@ fn listen_address(railway: bool) -> Result<SocketAddr, &'static str> {
 }
 
 async fn health(State(workspace): State<Workspace>) -> StatusCode {
-    if !workspace.railway {
-        return StatusCode::NO_CONTENT;
-    }
-    // Check the migrated schema and the app's deliberately restricted database role.
     let ready = workspace
         .query(|client| {
             client
                 .query_one(
-                    "SELECT NOT current_setting('is_superuser')::boolean
+                    "SELECT NOT (rolsuper OR rolcreaterole OR rolcreatedb OR rolbypassrls)
                         AND pg_has_role('ductdelta_web_runtime', 'USAGE')
+                        AND NOT pg_has_role('ductdelta_owner', 'MEMBER')
                         AND has_function_privilege(
-                            'ductdelta.web_account_sessions(bytea)', 'EXECUTE')",
+                            'ductdelta.web_account_sessions(bytea)', 'EXECUTE')
+                        AND has_function_privilege('ductdelta.claim_activity_email()', 'EXECUTE')
+                        AND has_function_privilege(
+                            'ductdelta.finish_activity_email(uuid,integer,uuid,integer)', 'EXECUTE')
+                     FROM pg_catalog.pg_roles WHERE rolname = current_user",
                     &[],
                 )
                 .map(|row| row.get::<_, bool>(0))
@@ -310,13 +311,20 @@ async fn same_origin(State(workspace): State<Workspace>, request: Request, next:
         && host == Some("healthcheck.railway.app")
         && request.method() == Method::GET
         && request.uri().path() == "/healthz";
-    if (host != Some(workspace.host.as_str()) && !railway_health)
+    let mut response = if (host != Some(workspace.host.as_str()) && !railway_health)
         || (!request.method().is_safe() && origin != Some(workspace.origin.as_str()))
     {
-        return Rejection(StatusCode::FORBIDDEN, "Request origin is not allowed.").into_response();
-    }
-    let mut response = next.run(request).await;
+        Rejection(StatusCode::FORBIDDEN, "Request origin is not allowed.").into_response()
+    } else {
+        next.run(request).await
+    };
     let headers = response.headers_mut();
+    if workspace.secure {
+        headers.insert(
+            header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static("max-age=31536000"),
+        );
+    }
     headers
         .entry(header::CACHE_CONTROL)
         .or_insert(HeaderValue::from_static("no-store"));
