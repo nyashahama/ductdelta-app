@@ -69,3 +69,18 @@ Run the web and PostgreSQL 18 containers in the same Railway environment and reg
 3. Enable invitation email with a sending-only Resend key for `notify.ductdelta.com`, a sender such as `DuctDelta <invites@notify.ductdelta.com>`, and a stable invitation signing key. Keep tracking off and verify delivery by accepting a test invitation in the browser.
 
 For later migrations, back up the database and deploy the updated database image first. Run `runuser -u postgres -- ductdelta-migrate` in the database container before deploying the web update. The command uses the local socket, records completed migrations and retries safely after a failed transaction. Restore a backup in a disposable environment before admitting live customer records.
+
+## Operator activity alerts
+
+Alerts cover new companies, accepted invitations, new projects, and selected change milestones. They contain the event type and UTC time. Invitation links, user and project names, documents, and financial details stay in the workspace.
+
+After migration 0017, the deployment operator can enable alerts over the local database socket. Use an operator-controlled receiving address and a sender on the verified Resend domain. Leave staging unconfigured unless testing with a staging recipient. The app uses its existing Resend configuration.
+
+```sql
+INSERT INTO ductdelta.activity_email_settings (recipient, sender)
+VALUES (:'recipient', :'sender')
+ON CONFLICT (singleton) DO UPDATE
+SET recipient = EXCLUDED.recipient, sender = EXCLUDED.sender;
+```
+
+Delete the settings row to disable new alerts. Enablement applies to events recorded afterward. Check Railway logs for `activity_email_attempt` with state `accepted` or `needs_attention`. Run `python3 scripts/check_activity_email.py` against the disposable test database.
