@@ -12,6 +12,8 @@ The approved static export is under `frontend/public/product`. It uses component
 
 Nuxt copies the export into the same release as the workspace. The release script hashes inline script and style blocks from the final HTML. It also hashes the temporary transition rule written by the theme switch. The Rust server uses a separate policy for product pages and serves their content-hashed images, scripts and stylesheet under `/product/_astro/`.
 
+The release script also builds the product dark stylesheet from the workspace's compiled neutral and primary colors and its Public Sans fonts. The [ScrewFast dark overrides](../frontend/scripts/product-dark.css) apply those values when the product's dark theme is active. The browser check compares the rendered dark colors and font on each public page with the workspace.
+
 Edit the checked-in HTML for copy changes. For layout or behavior changes, rebuild the ScrewFast source and replace the export together with its referenced assets. Import only Preline's accordion, collapse and tabs plugins. Generate Tailwind utilities from the four published pages and those plugins. Keep the product links under `/product/`, workspace actions relative to `/`, and the canonical URLs on `https://ductdelta.com`. The active navigation classes and `aria-current` are set in each HTML page so both slash forms work. Keep the asset filenames tied to their contents.
 
 ## Verify a release

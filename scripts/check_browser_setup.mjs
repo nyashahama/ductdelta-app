@@ -12,6 +12,15 @@ const link = (page, name) => page.getByRole('link', { name, exact: true })
 const checkWidth = async (page) => assert.ok(await page.evaluate(
   () => document.documentElement.scrollWidth <= innerWidth
 ))
+const productTheme = (page) => page.evaluate(() => {
+  const body = getComputedStyle(document.body)
+  return {
+    background: body.backgroundColor,
+    font: body.fontFamily,
+    heading: getComputedStyle(document.querySelector('main h1')).color,
+    surface: getComputedStyle(document.querySelector('header nav')).backgroundColor
+  }
+})
 
 try {
   const desktop = await browser.newContext({ viewport: { width: 1440, height: 1000 }, colorScheme: 'light' })
@@ -25,6 +34,24 @@ try {
   }
   await owner.goto(origin)
   await heading(owner, 'Sign in to your workspace').waitFor()
+  const workspaceTheme = await owner.evaluate(() => {
+    const body = getComputedStyle(document.body)
+    const swatch = document.createElement('span')
+    swatch.style.backgroundColor = 'var(--ui-bg-elevated)'
+    document.body.append(swatch)
+    const surface = getComputedStyle(swatch).backgroundColor
+    swatch.remove()
+    return {
+      background: body.backgroundColor,
+      font: body.fontFamily,
+      heading: getComputedStyle(document.querySelector('main h1')).color,
+      surface
+    }
+  })
+  const workspaceAction = await button(owner, 'Sign in').evaluate(el => ({
+    background: getComputedStyle(el).backgroundColor,
+    color: getComputedStyle(el).color
+  }))
   const policyErrors = []
   const recordPolicyError = (message) => {
     if (message.type() === 'error' && /content security policy/i.test(message.text())) {
@@ -35,12 +62,27 @@ try {
   member.on('console', recordPolicyError)
   await link(owner, 'About DuctDelta').click()
   await heading(owner, 'Keep mechanical changes on record').waitFor()
+  const lightTheme = await productTheme(owner)
   await owner.getByRole('tab', { name: /record the decision/i }).click()
   await owner.getByRole('img', { name: /illustrative rectangular ductwork/i }).waitFor()
   await button(owner, 'Dark Theme Toggle').click()
   await owner.reload()
   assert.ok(await owner.locator('html').evaluate(element => element.classList.contains('dark')))
+  for (const subpath of ['', 'workflow/', 'example/', 'faq/']) {
+    await owner.goto(origin + '/product/' + subpath)
+    assert.deepEqual(await productTheme(owner), workspaceTheme, 'Dashboard dark colors on /product/' + subpath)
+  }
+  await owner.goto(origin + '/product/')
+  assert.ok(await owner.evaluate(async () => {
+    const faces = await document.fonts.load('400 16px "Public Sans"')
+    return faces.some(face => face.status === 'loaded')
+  }), 'Marketing reuses the workspace webfont')
+  assert.deepEqual(await link(owner, 'See a worked example').evaluate(el => ({
+    background: getComputedStyle(el).backgroundColor,
+    color: getComputedStyle(el).color
+  })), workspaceAction, 'Dashboard primary action colors in dark mode')
   await button(owner, 'Light Theme Toggle').click()
+  assert.deepEqual(await productTheme(owner), lightTheme, 'Light mode preserves its palette')
   await link(owner, 'See a worked example').click()
   await heading(owner, 'One duct reroute').waitFor()
   await owner.getByRole('tab', { name: 'Payment balance', exact: true }).click()
