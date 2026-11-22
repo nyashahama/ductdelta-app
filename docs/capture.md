@@ -38,6 +38,8 @@ Apply the migrations in number order. Build the Nuxt workspace and set `DUCTDELT
 
 New companies and their members enroll in the browser. Company administrators share one-time invitation links privately. Each browser-enrolled user keeps their recovery key in a separate safe place. Recovery replaces both keys and invalidates earlier sessions.
 
+Open Account sessions from the account menu to check active sessions across your company memberships. You can sign out another session or all other sessions and keep the current browser signed in. Run `python3 scripts/check_account_sessions.py` to verify session isolation, revocation, and recovery.
+
 For an upgraded installation, migration 0008 preserves project membership and creates company membership without assigning admin authority. After verifying the member's authority, a deployment operator with `ductdelta_company_bootstrap` can run `ductdelta appoint-first-admin COMPANY_UUID ACTOR_UUID`. This applies once per upgraded company and records the operator and time. The operator can issue a temporary sign-in key for a legacy actor with `ductdelta issue-key ACTOR_UUID DISPLAY_NAME` and deliver it privately.
 
 Company administrators can choose a default invitation lifetime from 1 to 14 days in Company settings. The initial default is 7 days. Saved changes apply to invitations issued afterward. Access history records who made invitation, company role and project access changes from migration 0014 onward. It includes the project creator's first access grant. Run `python3 scripts/check_company_access_history.py` to verify the settings, access history and preservation of a pre-upgrade invitation.

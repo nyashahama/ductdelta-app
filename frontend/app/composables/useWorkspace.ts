@@ -1,6 +1,6 @@
 import { ApiError, api, reportError, requestJson, type Project } from '~/utils/api'
 
-export type WorkspaceView = 'overview' | 'observations' | 'cases' | 'company'
+export type WorkspaceView = 'overview' | 'observations' | 'cases' | 'company' | 'sessions'
 export type Company = { id: string, name: string, role: 'admin' | 'member' }
 type Session = { name: string }
 
@@ -23,7 +23,8 @@ export function useWorkspace() {
     : projects.value?.find(({ id }) => id === requestedProject.value))
   const unavailableProject = computed(() => projects.value !== undefined
     && requestedProject.value !== undefined && !project.value)
-  const view = computed<WorkspaceView>(() => route.query.view === 'observations' || route.query.view === 'cases' || route.query.view === 'company'
+  const view = computed<WorkspaceView>(() => route.query.view === 'observations' || route.query.view === 'cases'
+    || route.query.view === 'company' || route.query.view === 'sessions'
     ? route.query.view
     : 'overview')
 
@@ -31,7 +32,7 @@ export function useWorkspace() {
     return {
       path: '/',
       query: {
-        project: next === 'company' ? undefined : projectId,
+        project: next === 'company' || next === 'sessions' ? undefined : projectId,
         view: next === 'overview' ? undefined : next,
         caseId: next === 'cases' ? id : undefined,
         observationId: next === 'observations' ? id : undefined

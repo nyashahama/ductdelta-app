@@ -1,3 +1,4 @@
+mod account_sessions;
 mod cases;
 mod company_access_history;
 mod company_setup;

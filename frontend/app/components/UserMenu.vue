@@ -6,7 +6,7 @@ const props = defineProps<{
   name: string
   signing: boolean
 }>()
-const emit = defineEmits<{ 'sign-out': [] }>()
+const emit = defineEmits<{ 'open-sessions': [], 'sign-out': [] }>()
 const colorMode = useColorMode()
 
 const items = computed<DropdownMenuItem[][]>(() => [[{
@@ -21,6 +21,11 @@ const items = computed<DropdownMenuItem[][]>(() => [[{
     checked: colorMode.preference === label.toLowerCase(),
     onSelect: () => { colorMode.preference = label.toLowerCase() }
   }))
+}], [{
+  label: 'Account sessions',
+  icon: 'i-lucide-monitor',
+  to: { path: '/', query: { view: 'sessions' } },
+  onSelect: () => emit('open-sessions')
 }], [{
   label: 'Sign out',
   icon: 'i-lucide-log-out',
