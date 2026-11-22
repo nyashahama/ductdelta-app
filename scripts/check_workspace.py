@@ -145,6 +145,7 @@ def grant_demo_capabilities(server):
 def verify(server):
     path = f"/api/projects/{PROJECT}/observations"
     _, headers = server.request("/healthz", expected=204)
+    assert "Strict-Transport-Security" not in headers
     assert "frame-ancestors" in headers["Content-Security-Policy"]
     server.request("/api/session", expected=401)
     reporter_key = server.key(REPORTER, "Site reporter")

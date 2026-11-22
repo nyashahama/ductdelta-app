@@ -311,13 +311,20 @@ async fn same_origin(State(workspace): State<Workspace>, request: Request, next:
         && host == Some("healthcheck.railway.app")
         && request.method() == Method::GET
         && request.uri().path() == "/healthz";
-    if (host != Some(workspace.host.as_str()) && !railway_health)
+    let mut response = if (host != Some(workspace.host.as_str()) && !railway_health)
         || (!request.method().is_safe() && origin != Some(workspace.origin.as_str()))
     {
-        return Rejection(StatusCode::FORBIDDEN, "Request origin is not allowed.").into_response();
-    }
-    let mut response = next.run(request).await;
+        Rejection(StatusCode::FORBIDDEN, "Request origin is not allowed.").into_response()
+    } else {
+        next.run(request).await
+    };
     let headers = response.headers_mut();
+    if workspace.secure {
+        headers.insert(
+            header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static("max-age=31536000"),
+        );
+    }
     headers
         .entry(header::CACHE_CONTROL)
         .or_insert(HeaderValue::from_static("no-store"));
