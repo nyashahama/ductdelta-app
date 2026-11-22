@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ApiError, api, reportError, requestJson } from '../../utils/api'
-import { eventsOf, formatDate, type CaseRecord } from './case-data'
+import { eventsOf, formatDate, type CaseIssuedNoticeCopy, type CaseRecord } from './case-data'
 import { useActiveScope, useCaseResource } from './useCaseResource'
 
 type RecipientLink = { id: string, expires_at: string, revoked_at: string | null }
@@ -20,7 +20,7 @@ type LinkDraft = { copyId: string, operation_id: string, token: string }
 type Rule = { recipient: string, clause: string, service_method: string, issuer_name: string }
 
 const props = defineProps<{ path: string, record: CaseRecord, permission: 'read' | 'capture' }>()
-const emit = defineEmits<{ 'session-expired': [] }>()
+const emit = defineEmits<{ 'session-expired': [], 'issued': [copy: CaseIssuedNoticeCopy] }>()
 const expire = () => emit('session-expired')
 const isActive = useActiveScope()
 const notices = computed(() => eventsOf(props.record, 'notice'))
@@ -34,6 +34,8 @@ const rule = computed(() => {
 const endpoint = computed(() => selectedNotice.value ? `${props.path}/notices/${selectedNotice.value.id}/copies` : null)
 const { resource, reload } = useCaseResource<NoticeCopies>(endpoint, expire)
 const noticeCopies = computed(() => resource.value.kind === 'ready' ? resource.value.data : null)
+const dispatchedCopies = computed(() => new Set(eventsOf(props.record, 'notice_dispatch')
+  .flatMap(event => event.data.copy ? [event.data.copy.id] : [])))
 const versions = computed(() => noticeCopies.value?.copies ?? [])
 const latest = computed(() => versions.value[0])
 const canManage = computed(() => props.permission === 'capture' && props.record.capabilities.includes('direction'))
@@ -101,6 +103,7 @@ async function issue() {
     if (!isCurrent()) return
     cancelDraft()
     feedback.value = `Version ${saved.version} issued.`
+    if (selectedId.value) emit('issued', { ...saved, notice_id: selectedId.value })
     reload()
   } catch (cause) {
     if (isCurrent()) {
@@ -324,6 +327,10 @@ async function copyLink(url: string) {
           </div>
           <p class="text-sm wrap-anywhere">
             Issued to {{ copy.recipient }} <span class="text-muted">· {{ formatDate(copy.issued_at) }}</span>
+          </p>
+          <p class="text-sm text-muted">
+            {{ dispatchedCopies.has(copy.id) ? 'Dispatch recorded for this version' : copy.id === latest?.id
+              ? 'Latest version has no dispatch record' : 'No dispatch recorded for this version' }}
           </p>
           <p class="text-xs text-muted">
             SHA-256 <code class="wrap-anywhere">{{ copy.sha256 }}</code>

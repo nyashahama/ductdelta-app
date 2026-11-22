@@ -4,17 +4,18 @@ import { dispositions, eventTitle, formatDate, formatDecimal, moneyLabels, outco
 import NoticeRuleSummary from './NoticeRuleSummary.vue'
 import { formatNoticeDeadline } from './notice-rule'
 
-const props = defineProps<{ events: CaseEvent[], receipts: BankReceipt[] }>()
+const props = defineProps<{ events: CaseEvent[], receipts: BankReceipt[], path: string }>()
 const references = computed(() => new Map([
   ...props.events.map(event => [event.id, eventTitle(event)] as const),
   ...props.receipts.map(receipt => [receipt.id, 'Receipt ' + receipt.reference] as const)
 ]))
-const referenceKeys = new Set(['notice', 'instruction', 'quote', 'predecessor', 'application', 'receipt', 'certificate', 'allocation'])
+const referenceKeys = new Set(['notice', 'dispatch', 'corrects_dispatch', 'instruction', 'quote', 'predecessor', 'application', 'receipt', 'certificate', 'allocation'])
 const amountKeys = new Set(['amount', 'cumulative', 'withheld', 'released'])
 const eventLabels = {
   reference: 'Reference', agreement: 'Agreement', scope: 'Authorized scope', body: 'Notice text', due_at: 'Due',
   trigger_at: 'Trigger date and time', deadline_basis: 'Manual deadline basis',
-  notice: 'Notice', instruction: 'Instruction', description: 'Work performed', completed: 'Completion',
+  notice: 'Notice', dispatch: 'Acknowledged dispatch', corrects_dispatch: 'Corrects dispatch',
+  service_method: 'Actual service method', service_evidence: 'Service exception evidence', instruction: 'Instruction', description: 'Work performed', completed: 'Completion',
   quote: 'Quote', reason: 'Reason', amount: 'Amount', cumulative: 'Cumulative certified',
   withheld: 'Retention withheld', released: 'Retention released', predecessor: 'Earlier certificate',
   application: 'Payment application', receipt: 'Cash receipt', certificate: 'Certificate', allocation: 'Allocation', outcome: 'Outcome'
@@ -41,6 +42,18 @@ function visibleFields(event: CaseEvent) {
           ? formatNoticeDeadline(String(data[key]))
           : fieldValue(key, data[key])
       }])
+  if (event.kind === 'notice_dispatch' || event.kind === 'notice_receipt') {
+    const copy = event.data.copy
+    if (copy) {
+      content.push(
+        { id: 'copy-version', label: 'Issued version', value: String(copy.version) },
+        { id: 'copy-recipient', label: 'Recipient on issued copy', value: copy.recipient },
+        { id: 'copy-sha256', label: 'Issued copy SHA-256', value: copy.sha256 }
+      )
+    } else {
+      content.push({ id: 'legacy-service', label: 'Copy linkage', value: 'Legacy notice-level evidence' })
+    }
+  }
   for (const [key, value] of Object.entries(event.data.financial_snapshot ?? {})) {
     const label = ({ work_delta: 'Certified this period', certificate_credit_applied: 'Certificate credit applied' } as Record<string, string>)[key]
       ?? moneyLabels[key as MoneyField]
@@ -87,6 +100,17 @@ function visibleFields(event: CaseEvent) {
             </h4>
             <NoticeRuleSummary :rule="event.data.notice_rule" />
           </section>
+          <UButton
+            v-if="(event.kind === 'notice_dispatch' || event.kind === 'notice_receipt') && event.data.copy"
+            external
+            :to="path + '/notices/' + event.data.notice + '/copies/' + event.data.copy.id + '/download'"
+            size="sm"
+            color="neutral"
+            variant="outline"
+            class="mt-3"
+          >
+            Download issued version {{ event.data.copy.version }}
+          </UButton>
           <div v-if="event.kind === 'quote' || event.kind === 'decision'" class="mt-3 overflow-x-auto">
             <table v-if="event.kind === 'quote'" class="w-full min-w-48 text-left text-sm" aria-label="Quoted lines">
               <thead class="bg-elevated text-muted">

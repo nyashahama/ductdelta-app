@@ -89,7 +89,10 @@ def verify_closeout(server, reporter):
     draft = {"operation_id": str(uuid4()), "recipient": "Contract administrator", "message": "Recorded issue"}
     saved = server.request(path, "POST", draft, reporter)[0]
     for kind, data in (
-        ("notice_dispatch", {"notice": notice, "reference": f"Portal link to copy {saved['id']}"}),
+        ("notice_dispatch", {
+            "notice": notice, "reference": "Portal upload confirmation", "issued_copy": saved["id"],
+            "recipient": saved["recipient"], "service_method": "Contract portal",
+        }),
         ("close", {"reason": "No change required", "outcome": "no_change"}),
     ):
         server.request(f"{detail}/actions", "POST", {
