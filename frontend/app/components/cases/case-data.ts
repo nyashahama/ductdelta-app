@@ -1,3 +1,5 @@
+import type { NoticeRule } from './notice-rule'
+
 export const actions = {
   notice: { label: 'Record notice', grant: 'direction', event: 'Notice' },
   notice_dispatch: { label: 'Record notice dispatch', grant: 'direction', event: 'Notice dispatched' },
@@ -41,7 +43,13 @@ type Reference = { reference: string }
 type Reason = { reason: string }
 type Agreement = { agreement: string }
 type EventPayload = {
-  notice: Reference & Agreement & { body: string, due_at?: string }
+  notice: Reference & Agreement & {
+    body: string
+    due_at?: string
+    notice_rule?: NoticeRule
+    trigger_at?: string
+    deadline_basis?: string
+  }
   notice_dispatch: Reference & { notice: string }
   notice_receipt: Reference & { notice: string }
   instruction: Reference & Agreement & { scope: string }
@@ -163,7 +171,9 @@ export function actionData(kind: ActionKind, form: FormData): Record<string, unk
   if (data.instruction === '__none__') delete data.instruction
   if (data.application === '__none__') delete data.application
   if (kind === 'work') data.completed = data.completed === 'true'
-  if (typeof data.due_at === 'string') data.due_at = new Date(data.due_at).toISOString()
+  if (typeof data.due_at === 'string' && typeof data.trigger_at !== 'string') {
+    data.due_at = new Date(data.due_at).toISOString()
+  }
   return data
 }
 

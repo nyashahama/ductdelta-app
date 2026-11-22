@@ -9,6 +9,7 @@ mod evidence;
 mod frontend;
 mod invitation_mailer;
 mod issued_notice;
+mod notice_rules;
 mod observation;
 mod overview;
 mod postgres_pool;

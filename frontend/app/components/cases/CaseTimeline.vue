@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { dispositions, eventTitle, formatDate, formatDecimal, moneyLabels, outcomes, type BankReceipt, type CaseEvent, type MoneyField } from './case-data'
+import NoticeRuleSummary from './NoticeRuleSummary.vue'
+import { formatNoticeDeadline } from './notice-rule'
 
 const props = defineProps<{ events: CaseEvent[], receipts: BankReceipt[] }>()
 const references = computed(() => new Map([
@@ -11,6 +13,7 @@ const referenceKeys = new Set(['notice', 'instruction', 'quote', 'predecessor', 
 const amountKeys = new Set(['amount', 'cumulative', 'withheld', 'released'])
 const eventLabels = {
   reference: 'Reference', agreement: 'Agreement', scope: 'Authorized scope', body: 'Notice text', due_at: 'Due',
+  trigger_at: 'Trigger date and time', deadline_basis: 'Manual deadline basis',
   notice: 'Notice', instruction: 'Instruction', description: 'Work performed', completed: 'Completion',
   quote: 'Quote', reason: 'Reason', amount: 'Amount', cumulative: 'Cumulative certified',
   withheld: 'Retention withheld', released: 'Retention released', predecessor: 'Earlier certificate',
@@ -31,7 +34,13 @@ function visibleFields(event: CaseEvent) {
   const data: Record<string, unknown> = event.data
   const content = Object.entries(eventLabels).flatMap(([key, label]) => data[key] == null
     ? []
-    : [{ id: key, label, value: fieldValue(key, data[key]) }])
+    : [{
+        id: key,
+        label,
+        value: key === 'due_at' && event.kind === 'notice' && event.data.notice_rule
+          ? formatNoticeDeadline(String(data[key]))
+          : fieldValue(key, data[key])
+      }])
   for (const [key, value] of Object.entries(event.data.financial_snapshot ?? {})) {
     const label = ({ work_delta: 'Certified this period', certificate_credit_applied: 'Certificate credit applied' } as Record<string, string>)[key]
       ?? moneyLabels[key as MoneyField]
@@ -68,6 +77,16 @@ function visibleFields(event: CaseEvent) {
               </dd>
             </div>
           </dl>
+          <section
+            v-if="event.kind === 'notice' && event.data.notice_rule"
+            class="mt-3 rounded-md border border-default p-3"
+            aria-label="Recorded notice rule"
+          >
+            <h4 class="mb-2 text-sm font-semibold text-highlighted">
+              Recorded rule · Version {{ event.data.notice_rule.version }}
+            </h4>
+            <NoticeRuleSummary :rule="event.data.notice_rule" />
+          </section>
           <div v-if="event.kind === 'quote' || event.kind === 'decision'" class="mt-3 overflow-x-auto">
             <table v-if="event.kind === 'quote'" class="w-full min-w-48 text-left text-sm" aria-label="Quoted lines">
               <thead class="bg-elevated text-muted">
