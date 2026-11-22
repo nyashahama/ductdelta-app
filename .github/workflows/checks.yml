@@ -98,5 +98,6 @@ jobs:
           python3 scripts/check_case_evidence.py
           python3 scripts/check_evidence_http.py
           python3 scripts/check_issued_notices.py
+          python3 scripts/check_notice_service.py
           python3 scripts/check_overview.py
           python3 scripts/check_frontend.py
