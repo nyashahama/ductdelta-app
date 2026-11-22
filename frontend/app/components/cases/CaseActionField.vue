@@ -7,6 +7,11 @@ const items = computed(() => props.field.optional
   ? [{ value: '__none__', label: 'None' }, ...(props.field.options ?? [])]
   : props.field.options ?? [])
 const amountPattern = '-?(0|[1-9][0-9]{0,11})([.][0-9]{1,2})?'
+const timeHelp = computed(() => (
+  props.field.input === 'timestamp'
+    ? 'Use an explicit offset, for example 2026-04-10T17:00:00+02:00.'
+    : props.field.input === 'datetime-local' ? 'Uses the time zone on this device.' : undefined
+))
 </script>
 
 <template>
@@ -15,7 +20,7 @@ const amountPattern = '-?(0|[1-9][0-9]{0,11})([.][0-9]{1,2})?'
     :name="field.name"
     :required="!field.optional"
     :hint="field.optional ? 'Optional' : undefined"
-    :help="field.input === 'datetime-local' ? 'Uses the time zone on this device.' : undefined"
+    :help="timeHelp"
   >
     <USelect
       v-if="field.options"

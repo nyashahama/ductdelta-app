@@ -2,6 +2,7 @@
 import AccountSessions from '~/components/AccountSessions.vue'
 import CompanySettings from '~/components/company/CompanySettings.vue'
 import CasesWorkspace from '~/components/cases/CasesWorkspace.vue'
+import ProjectNoticeRules from '~/components/cases/ProjectNoticeRules.vue'
 import ObservationWorkspace from '~/components/observations/ObservationWorkspace.vue'
 import CaptureObservation from '~/components/observations/CaptureObservation.vue'
 import { api, reportError } from '~/utils/api'
@@ -20,11 +21,12 @@ const source = ref<{ project: string, id: string }>()
 const showNotices = ref(false)
 
 const title = computed(() => ({
-  overview: 'Project overview',
-  observations: 'Observations',
-  cases: 'Change cases',
-  company: 'Company settings',
-  sessions: 'Account sessions'
+  'overview': 'Project overview',
+  'observations': 'Observations',
+  'cases': 'Change cases',
+  'notice-rules': 'Notice rules',
+  'company': 'Company settings',
+  'sessions': 'Account sessions'
 })[view.value])
 const selectedCase = computed(() => recordId(route.query.caseId))
 const selectedObservation = computed(() => recordId(route.query.observationId))
@@ -242,6 +244,12 @@ watch([() => project.value?.id, view, period, version], ([id, page], _, onCleanu
         @select="openObservation"
         @source-case="linkedCase"
         @capture="beginCapture"
+        @session-expired="expire"
+      />
+      <ProjectNoticeRules
+        v-else-if="view === 'notice-rules'"
+        :key="project.id"
+        :project="project.id"
         @session-expired="expire"
       />
       <CasesWorkspace

@@ -231,6 +231,7 @@ function savedAction() {
             <CaseActions
               :key="selectedPath"
               :path="selectedPath"
+              :project="project.id"
               :record="record"
               :permission="project.permission"
               @saved="savedAction"
