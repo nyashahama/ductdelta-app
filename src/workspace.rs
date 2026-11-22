@@ -11,20 +11,19 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::{Json, Router, routing};
-use postgres::{Client, Config, Error, NoTls};
+use postgres::{Client, Error};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
-use tokio::sync::Semaphore;
-use tokio::{runtime, task};
+use tokio::runtime;
 use uuid::Uuid;
 
 use crate::observation;
+use crate::postgres_pool::{PostgresPool, QueryError};
 
 #[derive(Clone)]
 pub(crate) struct Workspace {
-    database: Config,
-    connections: Arc<Semaphore>,
+    database: Arc<PostgresPool>,
     origin: String,
     host: String,
     secure: bool,
@@ -81,28 +80,20 @@ impl Workspace {
         &self,
         action: impl FnOnce(&mut Client) -> Result<T, Error> + Send + 'static,
     ) -> Reply<T> {
-        let permit = Arc::clone(&self.connections)
-            .try_acquire_owned()
-            .map_err(|_| {
-                Rejection(
+        self.database
+            .run(action)
+            .await
+            .map_err(|error| match error {
+                QueryError::Busy => Rejection(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "Workspace busy. Try again.",
-                )
-            })?;
-        let config = self.database.clone();
-        task::spawn_blocking(move || {
-            let _permit = permit;
-            let mut database = config.connect(NoTls)?;
-            action(&mut database)
-        })
-        .await
-        .map_err(|_| {
-            Rejection(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Could not complete the operation.",
-            )
-        })?
-        .map_err(Rejection::from)
+                ),
+                QueryError::WorkerFailed => Rejection(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Could not complete the operation.",
+                ),
+                QueryError::Database(error) => Rejection::from(error),
+            })
     }
 }
 
@@ -126,9 +117,11 @@ pub(crate) fn serve() -> Result<(), &'static str> {
     let mut database = crate::database_config()?;
     database.connect_timeout(Duration::from_secs(3));
     database.options("-c statement_timeout=8000 -c lock_timeout=5000");
+    // Keep a pool owner on this thread so the synchronous clients close outside
+    // the async runtime.
+    let database = Arc::new(PostgresPool::new(database, 16));
     let workspace = Workspace {
-        database,
-        connections: Arc::new(Semaphore::new(16)),
+        database: Arc::clone(&database),
         host: authority.as_str().to_owned(),
         origin,
         secure,

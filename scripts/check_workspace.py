@@ -2,6 +2,7 @@
 """Verify the signed-in workspace over HTTP using a disposable PostgreSQL cluster."""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import http.client
 import json
@@ -17,6 +18,7 @@ from check_postgres import connection, disposable_cluster
 
 VIEWER = "20000000-0000-0000-0000-000000000002"
 OTHER_ORGANIZATION = "20000000-0000-0000-0000-000000000004"
+APPLICATION_NAME = "ductdelta_workspace_check"
 
 
 class Workspace:
@@ -101,7 +103,9 @@ def workspace(port=None, *, backup=None, frontend=None, seed=True, seed_before=N
         with subprocess.Popen(
             [CLI, "serve"], cwd=ROOT, env={
                 **environment,
-                "DUCTDELTA_DATABASE_URL": connection(database_socket, "dd_web"),
+                "DUCTDELTA_DATABASE_URL": (
+                    f'{connection(database_socket, "dd_web")} application_name={APPLICATION_NAME}'
+                ),
                 "DUCTDELTA_LISTEN": f"127.0.0.1:{port}",
                 **({"DUCTDELTA_WEB_DIST": str(frontend)} if frontend is not None else {}),
             },
@@ -171,6 +175,97 @@ def verify(server):
     print("PASS: same-origin sign-in, session rotation/logout, scoped capture and tamper-safe retries over HTTP")
 
 
+def verify_connection_reuse(server):
+    def backend():
+        return server.sql(
+            "SELECT pid FROM pg_stat_activity "
+            f"WHERE usename = 'dd_web' AND application_name = '{APPLICATION_NAME}'"
+        )
+
+    viewer = server.sign_in(server.key(VIEWER, "Project viewer"))
+    path = f"/api/projects/{PROJECT}/observations"
+    server.request(path, cookie=viewer)
+    original = backend()
+    assert original.isdecimal(), f"Expected one retained web backend, got {original!r}"
+    server.request(path, cookie=viewer)
+    assert backend() == original, "Sequential requests did not reuse the PostgreSQL backend."
+
+    server.sql(f"DELETE FROM ductdelta.project_member WHERE project_id = '{PROJECT}' AND actor_id = '{VIEWER}'")
+    server.request(path, cookie=viewer, expected=404)
+    assert backend() == original, "Permission denial discarded a healthy backend."
+
+    assert server.sql(f"SELECT pg_terminate_backend({original}, 5000)") == "t"
+    server.request("/api/session", "DELETE", cookie=viewer, expected=204)
+    replacement = backend()
+    assert replacement.isdecimal() and replacement != original, "Expected a new backend after termination."
+    server.request("/api/session", cookie=viewer, expected=401)
+    print("PASS: PostgreSQL backend reuse, live permission revocation and recovery for the next mutation")
+
+
+def verify_connection_limit(server):
+    reporter = server.sign_in(server.key(REPORTER, "Site reporter"))
+    outsider = server.sign_in(server.key(OTHER_ORGANIZATION, "Other company"))
+    path = "/api/projects"
+    activity = (
+        "SELECT count(*) FROM pg_stat_activity "
+        f"WHERE usename = 'dd_web' AND application_name = '{APPLICATION_NAME}'"
+    )
+    admin = connection(server.database_socket, "dd_admin")
+    with ThreadPoolExecutor(max_workers=16) as workers:
+        with subprocess.Popen(
+            [BIN / "psql", "-XqAt", "-v", "ON_ERROR_STOP=1", admin],
+            env=server.environment, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+        ) as lock:
+            try:
+                lock.stdin.write("BEGIN; LOCK TABLE ductdelta.project_member; SELECT 'locked';\n")
+                lock.stdin.flush()
+                assert lock.stdout.readline().strip() == "locked"
+                accounts = [(reporter, PROJECT), (outsider, SECOND_ORGANIZATION_PROJECT)] * 8
+                requests = [workers.submit(server.request, path, cookie=cookie) for cookie, _ in accounts]
+                deadline = time.monotonic() + 3
+                while server.sql(f"{activity} AND wait_event_type = 'Lock'") != "16":
+                    assert time.monotonic() < deadline, "Expected all admitted requests to wait for PostgreSQL."
+                    time.sleep(0.02)
+                server.request(path, cookie=reporter, expected=503)
+                assert server.sql(activity) == "16", "Workspace exceeded its PostgreSQL connection limit."
+            finally:
+                lock.stdin.close()
+                assert lock.wait(timeout=10) == 0
+        for request, (_, project) in zip(requests, accounts):
+            projects, _ = request.result()
+            assert project in {record["id"] for record in projects}
+            assert not {PROJECT, SECOND_ORGANIZATION_PROJECT}.issubset(record["id"] for record in projects)
+    print("PASS: sixteen concurrent requests retained tenant scope and excess work received HTTP 503")
+
+
+def verify_interrupted_capture(server):
+    reporter = server.sign_in(server.key(REPORTER, "Site reporter"))
+    server.sql("""
+        CREATE SEQUENCE public.capture_attempt;
+        CREATE FUNCTION public.interrupt_capture() RETURNS trigger
+        LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+        BEGIN
+            IF nextval('public.capture_attempt') = 1 THEN
+                PERFORM pg_terminate_backend(pg_backend_pid());
+            END IF;
+            RETURN NEW;
+        END;
+        $$;
+        CREATE TRIGGER interrupt_capture BEFORE INSERT ON ductdelta.observation
+        FOR EACH ROW EXECUTE FUNCTION public.interrupt_capture();
+    """)
+    data = {"operation_id": str(uuid.uuid4()), "note": "Synthetic interrupted capture."}
+    path = f"/api/projects/{PROJECT}/observations"
+    server.request(path, "POST", data, reporter, expected=500)
+    assert server.sql("SELECT last_value FROM public.capture_attempt") == "1"
+    server.request(path, "POST", data, reporter)
+    assert server.sql("SELECT last_value FROM public.capture_attempt") == "2"
+    assert server.sql(
+        f"SELECT count(*) FROM ductdelta.observation WHERE operation_id = '{data['operation_id']}'"
+    ) == "1"
+    print("PASS: interrupted capture was attempted once and the explicit retry saved one observation")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serve", action="store_true", help="leave a synthetic workspace available on loopback")
@@ -186,6 +281,10 @@ def main():
                    seed=not args.empty) as server:
         if not args.empty:
             verify(server)
+        if not args.serve:
+            verify_connection_reuse(server)
+            verify_connection_limit(server)
+            verify_interrupted_capture(server)
         if args.serve:
             print(f"Workspace: {server.origin}", flush=True)
             if not args.empty:
