@@ -70,7 +70,7 @@ Run the web and PostgreSQL 18 containers in the same Railway environment and reg
 2. Build the web service from the root `Dockerfile`. Set `DUCTDELTA_DATABASE_URL` to `postgresql://ductdelta_app:PASSWORD@HOST:5432/ductdelta` using references to the database service's `DUCTDELTA_APP_PASSWORD` and `RAILWAY_PRIVATE_DOMAIN`. Set `DUCTDELTA_ORIGIN` to the exact HTTPS origin and `DUCTDELTA_COMPANY_SETUP_CODE` to a random 64-digit hex value. Use port 8080 and `/healthz` for the deployment health check. The check requires the migrated schema and the runtime role.
 3. Enable invitation email with a sending-only Resend key for `notify.ductdelta.com`, a sender such as `DuctDelta <invites@notify.ductdelta.com>`, and a stable invitation signing key. Keep tracking off and verify delivery by accepting a test invitation in the browser.
 
-For later migrations, back up the database and deploy the updated database image first. Run `runuser -u postgres -- ductdelta-migrate` in the database container before deploying the web update. The command uses the local socket, records completed migrations and retries safely after a failed transaction. Restore a backup in a disposable environment before admitting live customer records.
+For later migrations, back up the database and deploy the updated database image first. On an existing volume, the image applies pending migrations over the local socket before accepting network connections. If a migration fails, startup stops. After correcting the failure, restart the database service to retry. Restore a backup in a disposable environment before admitting live customer records.
 
 ## Operator activity alerts
 
