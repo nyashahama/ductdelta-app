@@ -76,6 +76,11 @@ jobs:
           cargo clippy --all-targets --locked -- -D warnings
           cargo test --locked
 
+      - name: Upgrade a populated PostgreSQL volume
+        run: |
+          docker build -f deploy/postgres.Dockerfile -t ductdelta-postgres:test .
+          scripts/check_database_image.sh ductdelta-postgres:test
+
       - name: Check PostgreSQL and HTTP workflows
         run: |
           python3 scripts/check_postgres.py
