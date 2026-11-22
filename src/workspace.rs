@@ -159,6 +159,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
             )
             .merge(crate::company_setup::routes())
             .merge(crate::company_team::routes())
+            .merge(crate::company_access_history::routes())
             .merge(crate::cases::routes())
             .merge(crate::evidence::routes())
             .merge(crate::overview::routes())

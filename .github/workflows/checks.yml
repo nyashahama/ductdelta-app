@@ -82,6 +82,7 @@ jobs:
           python3 scripts/check_workspace.py
           python3 scripts/check_company_setup.py
           python3 scripts/check_company_team.py
+          python3 scripts/check_company_access_history.py
           python3 scripts/check_workflow.py
           python3 scripts/check_case_http.py
           python3 scripts/check_disputed_closeout.py
