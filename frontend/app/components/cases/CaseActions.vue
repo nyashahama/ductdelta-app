@@ -2,13 +2,14 @@
 import { computed, ref, watch } from 'vue'
 import { ApiError, api, reportError, requestJson } from '../../utils/api'
 import { actionFields, dispositionChoices } from './action-fields'
-import { actionData, actions, availableActions, eventsOf, formatDecimal, retryOperation, type ActionKind, type CaseRecord, type Operation } from './case-data'
+import { actionData, actions, availableActions, eventsOf, formatDecimal, retryOperation, type ActionKind, type CaseIssuedNoticeCopy, type CaseRecord, type Operation } from './case-data'
 import CaseActionField from './CaseActionField.vue'
+import CaseNoticeServiceFields from './CaseNoticeServiceFields.vue'
 import NoticeRuleSummary from './NoticeRuleSummary.vue'
 import { noticeRulePath, type NoticeRuleSettings } from './notice-rule'
 import { useActiveScope, useCaseResource } from './useCaseResource'
 
-const props = defineProps<{ record: CaseRecord, permission: 'read' | 'capture', path: string, project: string }>()
+const props = defineProps<{ record: CaseRecord, permission: 'read' | 'capture', path: string, project: string, issuedCopies: CaseIssuedNoticeCopy[] }>()
 const emit = defineEmits<{ 'saved': [], 'session-expired': [] }>()
 const kind = ref<ActionKind>()
 const error = ref('')
@@ -171,6 +172,14 @@ function refreshRule() {
           v-for="field in fields"
           :key="field.name"
           :field="field"
+          :disabled="busy"
+        />
+
+        <CaseNoticeServiceFields
+          v-if="selected === 'notice_dispatch' || selected === 'notice_receipt'"
+          :kind="selected"
+          :record="record"
+          :copies="issuedCopies"
           :disabled="busy"
         />
 

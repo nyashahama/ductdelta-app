@@ -42,6 +42,8 @@ type DecisionLine = { line: number, accepted: string, disposition: Disposition }
 type Reference = { reference: string }
 type Reason = { reason: string }
 type Agreement = { agreement: string }
+type ServedCopy = { id: string, version: number, recipient: string, sha256: string }
+export type CaseIssuedNoticeCopy = ServedCopy & { notice_id: string }
 type EventPayload = {
   notice: Reference & Agreement & {
     body: string
@@ -50,8 +52,14 @@ type EventPayload = {
     trigger_at?: string
     deadline_basis?: string
   }
-  notice_dispatch: Reference & { notice: string }
-  notice_receipt: Reference & { notice: string }
+  notice_dispatch: Reference & {
+    notice: string
+    copy?: ServedCopy
+    corrects_dispatch?: string
+    service_method?: string
+    service_evidence?: string
+  }
+  notice_receipt: Reference & { notice: string, copy?: ServedCopy, dispatch?: string }
   instruction: Reference & Agreement & { scope: string }
   work: { description: string, completed: boolean, instruction?: string }
   quote: Reference & { lines: QuoteLine[] }
@@ -91,6 +99,7 @@ export type CaseRecord = CaseSummary & {
   observation_id: string | null
   capabilities: Capability[]
   events: CaseEvent[]
+  issued_notice_copies: CaseIssuedNoticeCopy[]
   bank_receipts: BankReceipt[]
   allocatable_certificates: string[]
   financial: FinancialPosition | null
@@ -168,6 +177,7 @@ export function actionData(kind: ActionKind, form: FormData): Record<string, unk
     delete data.accepted
     delete data.disposition
   }
+  if (data.corrects_dispatch === '__none__') delete data.corrects_dispatch
   if (data.instruction === '__none__') delete data.instruction
   if (data.application === '__none__') delete data.application
   if (kind === 'work') data.completed = data.completed === 'true'

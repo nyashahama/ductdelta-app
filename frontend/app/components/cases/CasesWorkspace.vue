@@ -7,7 +7,7 @@ import CaseFinance from './CaseFinance.vue'
 import CaseNoticeCopies from './CaseNoticeCopies.vue'
 import CaseTimeline from './CaseTimeline.vue'
 import CreateCaseModal from './CreateCaseModal.vue'
-import { casePath, type CasePage, type CaseRecord, type CaseSummary } from './case-data'
+import { casePath, type CaseIssuedNoticeCopy, type CasePage, type CaseRecord, type CaseSummary } from './case-data'
 import { useCaseResource } from './useCaseResource'
 
 const props = defineProps<{ project: Project, selectedCaseId: string | null, sourceObservationId: string | null }>()
@@ -24,6 +24,7 @@ const statuses = ref<Record<string, boolean>>({})
 const newCase = ref(false)
 const dismissedSource = ref<string | null>(null)
 const confirmation = ref('')
+const recentlyIssued = ref<CaseIssuedNoticeCopy[]>([])
 const heading = ref<HTMLHeadingElement>()
 const expire = () => emit('session-expired')
 const registerPath = computed(() => casePath(props.project.id) + (cursor.value ? '?before=' + encodeURIComponent(cursor.value) : ''))
@@ -33,6 +34,10 @@ const { resource: detail, reload: reloadDetail } = useCaseResource<CaseRecord>(s
 const linkedSource = computed(() => props.sourceObservationId !== dismissedSource.value ? props.sourceObservationId : null)
 const canCreate = computed(() => props.project.permission === 'capture')
 const record = computed(() => detail.value.kind === 'ready' ? detail.value.data : null)
+const issuedCopies = computed(() => [...new Map([
+  ...(record.value?.issued_notice_copies ?? []),
+  ...recentlyIssued.value
+].map(copy => [copy.id, copy])).values()])
 const rows = computed(() => [...previous.value, ...(page.value.kind === 'ready' ? page.value.data.cases : [])]
   .map(item => ({ ...item, closed: statuses.value[item.id] ?? item.closed })))
 const next = computed(() => page.value.kind === 'ready' ? page.value.data.next_before : null)
@@ -49,7 +54,8 @@ watch(() => props.project.id, () => {
 watch(() => props.sourceObservationId, (id) => {
   if (id === null) dismissedSource.value = null
 })
-watch(() => props.selectedCaseId, () => {
+watch(selectedPath, () => {
+  recentlyIssued.value = []
   confirmation.value = ''
 })
 
@@ -90,6 +96,7 @@ function openObservation() {
 
 function savedAction() {
   confirmation.value = 'Action recorded.'
+  recentlyIssued.value = []
   reloadDetail()
   emit('changed')
 }
@@ -225,6 +232,7 @@ function savedAction() {
             :path="selectedPath"
             :record="record"
             :permission="project.permission"
+            @issued="copy => recentlyIssued.push(copy)"
             @session-expired="expire"
           />
           <CaseFiles
@@ -241,11 +249,12 @@ function savedAction() {
               :path="selectedPath"
               :project="project.id"
               :record="record"
+              :issued-copies="issuedCopies"
               :permission="project.permission"
               @saved="savedAction"
               @session-expired="expire"
             />
-            <CaseTimeline :events="record.events" :receipts="record.bank_receipts" />
+            <CaseTimeline :events="record.events" :receipts="record.bank_receipts" :path="selectedPath" />
           </div>
         </template>
       </div>

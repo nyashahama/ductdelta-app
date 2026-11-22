@@ -46,11 +46,8 @@ export function actionFields(kind: ActionKind, record: CaseRecord, rule?: Notice
       return [reference('Notice reference'), agreement, paragraph('body', 'Notice text', 12000),
         { name: 'due_at', label: 'Due date and time', input: 'datetime-local', optional: true }]
     case 'notice_dispatch':
-    case 'notice_receipt': {
-      const dispatched = new Set(eventsOf(record, 'notice_dispatch').map(event => event.data.notice))
-      const notices = eventsOf(record, 'notice').filter(event => kind === 'notice_dispatch' || dispatched.has(event.id))
-      return [linked('notice', 'Notice', notices), reference(kind === 'notice_dispatch' ? 'Dispatch reference' : 'Acknowledgement reference')]
-    }
+    case 'notice_receipt':
+      return []
     case 'instruction':
       return [reference('Instruction reference'), agreement, paragraph('scope', 'Authorized scope', 8000)]
     case 'work':
