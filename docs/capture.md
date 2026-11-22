@@ -59,3 +59,13 @@ Email on a public HTTPS origin requires `DUCTDELTA_COMPANY_SETUP_CODE`, a separa
 Disable open and click tracking on the sending domain. The message contains the private link. Restrict access to the sender account and its logs. The app distinguishes a queued email from one accepted by Resend. Inbox delivery can be checked through Resend. If a message needs attention, cancel it and create a new invitation or private link.
 
 Run `python3 scripts/check_invitation_email.py` for retry, isolation, and one-time acceptance with a loopback provider. Set `DUCTDELTA_PLAYWRIGHT_MODULE` and pass `--browser` to send and open an invitation in Chrome with that provider. [Resend sender setup](https://resend.com/docs/dashboard/domains/introduction)
+
+## Railway deployment
+
+Run the web and PostgreSQL 18 containers in the same Railway environment and region. Use a temporary Railway domain for staging and `https://ductdelta.com` as the production origin. Give each environment its own database volume and secrets.
+
+1. Build the private database service using `deploy/postgres.Dockerfile` at the repository root. Mount a volume at `/var/lib/postgresql`. Set `POSTGRES_PASSWORD` and `DUCTDELTA_APP_PASSWORD` to different randomly generated 64-digit hex values. The first initialization applies migrations and creates the restricted `ductdelta_app` login. Use `postgres` as the database administrator and `ductdelta` as the database name.
+2. Build the web service from the root `Dockerfile`. Set `DUCTDELTA_DATABASE_URL` to `postgresql://ductdelta_app:PASSWORD@HOST:5432/ductdelta` using references to the database service's `DUCTDELTA_APP_PASSWORD` and `RAILWAY_PRIVATE_DOMAIN`. Set `DUCTDELTA_ORIGIN` to the exact HTTPS origin and `DUCTDELTA_COMPANY_SETUP_CODE` to a random 64-digit hex value. Use port 8080 and `/healthz` for the deployment health check. The check requires the migrated schema and the runtime role.
+3. Enable invitation email with a sending-only Resend key for `notify.ductdelta.com`, a sender such as `DuctDelta <invites@notify.ductdelta.com>`, and a stable invitation signing key. Keep tracking off and verify delivery by accepting a test invitation in the browser.
+
+For later migrations, back up the database and deploy the updated database image first. Run `runuser -u postgres -- ductdelta-migrate` in the database container before deploying the web update. The command uses the local socket, records completed migrations and retries safely after a failed transaction. Restore a backup in a disposable environment before admitting live customer records.

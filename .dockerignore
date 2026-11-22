@@ -1,0 +1,12 @@
+*
+!Cargo.lock
+!Cargo.toml
+!src/
+!frontend/
+frontend/.env*
+frontend/.nuxt/
+frontend/.output/
+frontend/dist/
+frontend/node_modules/
+!migrations/
+!deploy/
