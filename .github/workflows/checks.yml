@@ -79,6 +79,7 @@ jobs:
       - name: Check PostgreSQL and HTTP workflows
         run: |
           python3 scripts/check_postgres.py
+          python3 scripts/check_deployment_migrations.py
           python3 scripts/check_workspace.py
           python3 scripts/check_account_sessions.py
           python3 scripts/check_company_setup.py
