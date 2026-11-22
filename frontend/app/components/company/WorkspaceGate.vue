@@ -17,6 +17,8 @@ const keys = ref<Keys>()
 const key = ref(props.pendingKeys[0] ?? '')
 const company = ref('')
 const name = ref('')
+const setupCode = ref('')
+const registration = ref<'loading' | 'open' | 'code' | 'unavailable'>('loading')
 const pending = ref(false)
 const error = ref('')
 const copied = ref('')
@@ -38,6 +40,7 @@ const title = computed(() => {
 function changeMode(next: typeof mode.value) {
   mode.value = next
   key.value = next === 'recover' ? props.pendingKeys[0] ?? '' : ''
+  setupCode.value = ''
   error.value = ''
 }
 
@@ -52,6 +55,20 @@ function cancelInvitation() {
   chooseInvitationSignIn(false)
   emit('cancel')
 }
+
+async function loadRegistration() {
+  registration.value = 'loading'
+  try {
+    const policy = await api<{ setup_code_required: boolean }>('/api/company-registration')
+    registration.value = policy.setup_code_required ? 'code' : 'open'
+  } catch {
+    registration.value = 'unavailable'
+  }
+}
+
+watch(mode, (next) => {
+  if (next === 'company') void loadRegistration()
+})
 
 async function copy(value: string, label: string) {
   try {
@@ -80,6 +97,7 @@ async function finish() {
 
 async function submit() {
   if (pending.value || signing.value || (props.invitation && sessionCheckError.value)) return
+  if (mode.value === 'company' && ['loading', 'unavailable'].includes(registration.value)) return
   const joining = joiningWithExistingAccount.value
   if (joining || (mode.value === 'sign-in' && !props.invitation)) {
     error.value = ''
@@ -117,8 +135,10 @@ async function submit() {
       keys.value = await api<Keys>('/api/companies', requestJson({
         company: company.value,
         name: name.value,
-        recovery_key: recoveryKey
+        recovery_key: recoveryKey,
+        setup_code: setupCode.value.trim() || undefined
       }))
+      setupCode.value = ''
       openedCompany.value = true
     } else {
       keys.value = await api<Keys>('/api/account/recover', requestJson({
@@ -140,6 +160,8 @@ async function submit() {
       error.value = 'Your session ended. Sign in again to accept this invitation.'
     } else if (mode.value === 'recover' && cause instanceof ApiError && cause.status === 401) {
       error.value = 'This recovery key is unavailable.'
+    } else if (mode.value === 'company' && cause instanceof ApiError && cause.status === 403) {
+      error.value = cause.message
     } else if (recoveryKey && props.pendingKeys.includes(recoveryKey)) {
       if (props.invitation) emit('cancel')
       changeMode('recover')
@@ -253,6 +275,37 @@ async function submit() {
               autocomplete="name"
             />
           </UFormField>
+          <UFormField
+            v-if="registration === 'code'"
+            label="Company setup code"
+            name="setup-code"
+            required
+          >
+            <UInput
+              v-model="setupCode"
+              type="password"
+              autocomplete="off"
+              :maxlength="64"
+              :readonly="pending"
+              class="w-full"
+              required
+            />
+          </UFormField>
+          <UAlert
+            v-if="registration === 'unavailable'"
+            color="error"
+            variant="subtle"
+            title="Could not check company setup."
+          >
+            <template #actions>
+              <UButton
+                label="Check again"
+                color="neutral"
+                variant="outline"
+                @click="loadRegistration"
+              />
+            </template>
+          </UAlert>
         </template>
         <template v-else>
           <p v-if="recovering && pendingKeys.length" class="text-sm text-muted">
@@ -286,7 +339,7 @@ async function submit() {
           :label="invitation ? (joiningWithExistingAccount ? 'Sign in' : 'Accept invitation') : ({ 'sign-in': 'Sign in', 'company': 'Create company', 'recover': 'Recover account' })[mode]"
           block
           :loading="pending || signing"
-          :disabled="Boolean(invitation && sessionCheckError)"
+          :disabled="Boolean(invitation && sessionCheckError) || (mode === 'company' && ['loading', 'unavailable'].includes(registration))"
         />
       </form>
 

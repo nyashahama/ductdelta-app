@@ -14,10 +14,12 @@ use axum::{Json, Router, routing};
 use postgres::{Client, Error};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use subtle::ConstantTimeEq;
 use tokio::net::TcpListener;
 use tokio::runtime;
 use uuid::Uuid;
 
+use crate::invitation_mailer::InvitationMailer;
 use crate::observation;
 use crate::postgres_pool::{PostgresPool, QueryError};
 
@@ -27,6 +29,8 @@ pub(crate) struct Workspace {
     origin: String,
     host: String,
     secure: bool,
+    invitation_mailer: Option<Arc<InvitationMailer>>,
+    company_setup_code: Option<Vec<u8>>,
 }
 
 pub(crate) struct Rejection(StatusCode, &'static str);
@@ -35,6 +39,14 @@ pub(crate) type Reply<T> = Result<T, Rejection>;
 impl Rejection {
     pub(crate) const fn invalid(message: &'static str) -> Self {
         Self(StatusCode::UNPROCESSABLE_ENTITY, message)
+    }
+
+    pub(crate) const fn unavailable(message: &'static str) -> Self {
+        Self(StatusCode::SERVICE_UNAVAILABLE, message)
+    }
+
+    pub(crate) const fn forbidden(message: &'static str) -> Self {
+        Self(StatusCode::FORBIDDEN, message)
     }
 }
 
@@ -57,6 +69,10 @@ impl From<Error> for Rejection {
                 StatusCode::CONFLICT,
                 "Keep at least one company administrator.",
             ),
+            Some("DD004") => Self(
+                StatusCode::TOO_MANY_REQUESTS,
+                "This company sent too many invitations. Try again later.",
+            ),
             Some("DD001" | "40001" | "23505") => Self(
                 StatusCode::CONFLICT,
                 "The operation conflicts with a saved record.",
@@ -76,6 +92,37 @@ impl From<Error> for Rejection {
 }
 
 impl Workspace {
+    pub(crate) fn invitation_mailer(&self) -> Option<&InvitationMailer> {
+        self.invitation_mailer.as_deref()
+    }
+
+    pub(crate) fn origin(&self) -> &str {
+        &self.origin
+    }
+
+    pub(crate) fn company_setup_code_required(&self) -> bool {
+        self.company_setup_code.is_some()
+    }
+
+    pub(crate) fn check_company_setup_code(&self, candidate: Option<&str>) -> Reply<()> {
+        let Some(expected) = &self.company_setup_code else {
+            return Ok(());
+        };
+        let matches = candidate
+            .filter(|value| valid_key(value))
+            .is_some_and(|value| {
+                let submitted = key_digest(value);
+                bool::from(expected.ct_eq(&submitted))
+            });
+        if matches {
+            Ok(())
+        } else {
+            Err(Rejection::forbidden(
+                "Enter the company setup code from your deployment administrator.",
+            ))
+        }
+    }
+
     pub(crate) async fn query<T: Send + 'static>(
         &self,
         action: impl FnOnce(&mut Client) -> Result<T, Error> + Send + 'static,
@@ -120,17 +167,37 @@ pub(crate) fn serve() -> Result<(), &'static str> {
     // Keep a pool owner on this thread so the synchronous clients close outside
     // the async runtime.
     let database = Arc::new(PostgresPool::new(database, 16));
+    let company_setup_code = env::var_os("DUCTDELTA_COMPANY_SETUP_CODE")
+        .map(|value| {
+            value
+                .into_string()
+                .ok()
+                .filter(|value| valid_key(value))
+                .map(|value| key_digest(&value))
+                .ok_or("Set DUCTDELTA_COMPANY_SETUP_CODE to a random value with 64 hex digits.")
+        })
+        .transpose()?;
+    let invitation_mailer = InvitationMailer::from_env(secure)?.map(Arc::new);
+    if secure && invitation_mailer.is_some() && company_setup_code.is_none() {
+        return Err("Set DUCTDELTA_COMPANY_SETUP_CODE before enabling invitation email.");
+    }
     let workspace = Workspace {
         database: Arc::clone(&database),
         host: authority.as_str().to_owned(),
         origin,
         secure,
+        invitation_mailer,
+        company_setup_code,
     };
     let runtime = runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .map_err(|_| "Could not start the web runtime.")?;
     runtime.block_on(async move {
+        if let Some(mailer) = workspace.invitation_mailer.clone() {
+            let mail_workspace = workspace.clone();
+            tokio::spawn(async move { mailer.deliver_queued(&mail_workspace).await });
+        }
         let app = Router::new()
             .merge(crate::frontend::routes()?)
             .route(

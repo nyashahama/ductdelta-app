@@ -13,3 +13,9 @@ export type Team = {
   access: Access[]
   invitations: { id: string, name: string, expires_at: string }[]
 }
+export type EmailInvitation = {
+  id: string
+  email: string
+  state: 'queued' | 'accepted' | 'needs_attention'
+}
+export type InvitationDelivery = { email_enabled: boolean, deliveries: EmailInvitation[] }
