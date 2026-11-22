@@ -1,4 +1,5 @@
 mod account_sessions;
+mod activity_email;
 mod cases;
 mod company_access_history;
 mod company_setup;

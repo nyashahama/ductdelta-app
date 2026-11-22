@@ -134,17 +134,36 @@ impl InvitationMailer {
             origin = delivery.origin,
             token = token,
         );
-        let retry_after = 1 << delivery.attempt;
+        self.send(
+            &format!("invitation/{}", delivery.id),
+            Message {
+                sender: &delivery.sender,
+                recipient: &delivery.recipient,
+                subject: "Join your team on DuctDelta",
+                text: &body,
+            },
+            delivery.attempt,
+        )
+        .await
+    }
+
+    pub(crate) async fn send(
+        &self,
+        idempotency_key: &str,
+        message: Message<'_>,
+        attempt: i32,
+    ) -> DeliveryResult {
+        let retry_after = 1 << attempt;
         let Ok(response) = self
             .client
             .post(&self.endpoint)
             .bearer_auth(&self.api_key)
-            .header("Idempotency-Key", format!("invitation/{}", delivery.id))
+            .header("Idempotency-Key", idempotency_key)
             .json(&json!({
-                "from": delivery.sender,
-                "to": [&delivery.recipient],
-                "subject": "Join your team on DuctDelta",
-                "text": body,
+                "from": message.sender,
+                "to": [message.recipient],
+                "subject": message.subject,
+                "text": message.text,
             }))
             .send()
             .await
@@ -239,10 +258,38 @@ struct ProviderError {
     name: String,
 }
 
-enum DeliveryResult {
+pub(crate) struct Message<'a> {
+    pub(crate) sender: &'a str,
+    pub(crate) recipient: &'a str,
+    pub(crate) subject: &'a str,
+    pub(crate) text: &'a str,
+}
+
+pub(crate) enum DeliveryResult {
     Accepted(Uuid),
     Retry(i32),
     NeedsAttention,
+}
+
+pub(crate) struct DeliveryOutcome {
+    pub(crate) provider_id: Option<Uuid>,
+    pub(crate) delay: Option<i32>,
+    pub(crate) state: &'static str,
+}
+
+impl DeliveryResult {
+    pub(crate) fn outcome(self, attempt: i32) -> DeliveryOutcome {
+        let (provider_id, delay, state) = match self {
+            Self::Accepted(id) => (Some(id), None, "accepted"),
+            Self::Retry(delay) if attempt < 5 => (None, Some(delay), "retry"),
+            Self::Retry(_) | Self::NeedsAttention => (None, None, "needs_attention"),
+        };
+        DeliveryOutcome {
+            provider_id,
+            delay,
+            state,
+        }
+    }
 }
 
 struct Delivery {
@@ -278,13 +325,11 @@ impl Delivery {
     }
 
     async fn finish(self, workspace: &Workspace, result: DeliveryResult) -> Reply<()> {
-        let (provider_id, delay, state) = match result {
-            DeliveryResult::Accepted(id) => (Some(id), None, "accepted"),
-            DeliveryResult::Retry(delay) if self.attempt < 5 => (None, Some(delay), "retry"),
-            DeliveryResult::Retry(_) | DeliveryResult::NeedsAttention => {
-                (None, None, "needs_attention")
-            }
-        };
+        let DeliveryOutcome {
+            provider_id,
+            delay,
+            state,
+        } = result.outcome(self.attempt);
         let id = self.id;
         let attempt = self.attempt;
         workspace

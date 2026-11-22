@@ -204,6 +204,11 @@ pub(crate) fn serve() -> Result<(), &'static str> {
         .map_err(|_| "Could not start the web runtime.")?;
     runtime.block_on(async move {
         if let Some(mailer) = workspace.invitation_mailer.clone() {
+            let activity_mailer = Arc::clone(&mailer);
+            let activity_workspace = workspace.clone();
+            tokio::spawn(async move {
+                crate::activity_email::deliver_queued(&activity_mailer, &activity_workspace).await
+            });
             let mail_workspace = workspace.clone();
             tokio::spawn(async move { mailer.deliver_queued(&mail_workspace).await });
         }
