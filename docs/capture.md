@@ -58,6 +58,8 @@ Email on a public HTTPS origin requires `DUCTDELTA_COMPANY_SETUP_CODE`, a separa
 
 Disable open and click tracking on the sending domain. The message contains the private link. Restrict access to the sender account and its logs. The app distinguishes a queued email from one accepted by Resend. Inbox delivery can be checked through Resend. If a message needs attention, cancel it and create a new invitation or private link.
 
+Set `DUCTDELTA_EMAIL_REPLY_TO` to the monitored support inbox for invitation replies. Invitations and operator activity alerts use the shared DuctDelta layout and include a plain-text body.
+
 Run `python3 scripts/check_invitation_email.py` for retry, isolation, and one-time acceptance with a loopback provider. Set `DUCTDELTA_PLAYWRIGHT_MODULE` and pass `--browser` to send and open an invitation in Chrome with that provider. [Resend sender setup](https://resend.com/docs/dashboard/domains/introduction)
 
 ## Railway deployment

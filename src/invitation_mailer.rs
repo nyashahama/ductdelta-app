@@ -13,10 +13,13 @@ use hmac::KeyInit;
 use hmac::Mac;
 use reqwest::Client;
 use serde::Deserialize;
+use serde_json::Value;
 use serde_json::json;
 use sha2::Sha256;
 use uuid::Uuid;
 
+use crate::email_layout::EmailAction;
+use crate::email_layout::EmailLayout;
 use crate::workspace;
 use crate::workspace::Rejection;
 use crate::workspace::Reply;
@@ -31,6 +34,7 @@ pub(crate) struct InvitationMailer {
     api_key: String,
     signing_key: String,
     sender: String,
+    reply_to: Option<String>,
 }
 
 impl InvitationMailer {
@@ -61,6 +65,14 @@ impl InvitationMailer {
             .and_then(|value| value.into_string().ok())
             .filter(|value| workspace::valid_key(value))
             .ok_or("Set a persistent random DUCTDELTA_INVITE_SIGNING_KEY with 64 hex digits.")?;
+        let reply_to = env::var_os("DUCTDELTA_EMAIL_REPLY_TO")
+            .map(|value| {
+                value
+                    .to_str()
+                    .and_then(|value| mailbox(value).ok())
+                    .ok_or("Set DUCTDELTA_EMAIL_REPLY_TO to one monitored support address.")
+            })
+            .transpose()?;
         let endpoint = match endpoint {
             None if secure => SEND_ENDPOINT.to_owned(),
             Some(value) if !secure => value
@@ -82,6 +94,7 @@ impl InvitationMailer {
             api_key,
             signing_key,
             sender,
+            reply_to,
         }))
     }
 
@@ -124,23 +137,31 @@ impl InvitationMailer {
         if workspace::key_digest(&token) != delivery.token_digest {
             return DeliveryResult::NeedsAttention;
         }
-        let body = format!(
-            concat!(
-                "{company} invited you to join their DuctDelta workspace.\n\n",
-                "{origin}/#invite={token}\n\n",
-                "Use the invitation once before it expires. If you did not expect it, ignore this message.",
-            ),
-            company = delivery.company_name,
-            origin = delivery.origin,
-            token = token,
+        let heading = "Join your team on DuctDelta";
+        let description = format!(
+            "{} invited you to join their DuctDelta workspace.",
+            delivery.company_name
         );
+        let url = format!("{}/#invite={token}", delivery.origin);
+        let detail = "Use the invitation once before it expires. If you did not expect it, ignore this message.";
+        let text = format!("{description}\n\n{url}\n\n{detail}");
         self.send(
             &format!("invitation/{}", delivery.id),
             Message {
                 sender: &delivery.sender,
                 recipient: &delivery.recipient,
-                subject: "Join your team on DuctDelta",
-                text: &body,
+                subject: heading,
+                text: &text,
+                layout: EmailLayout {
+                    heading,
+                    message: &description,
+                    detail,
+                    action: Some(EmailAction {
+                        label: "Accept invitation",
+                        url: &url,
+                    }),
+                },
+                reply_to: self.reply_to.as_deref(),
             },
             delivery.attempt,
         )
@@ -153,33 +174,55 @@ impl InvitationMailer {
         message: Message<'_>,
         attempt: i32,
     ) -> DeliveryResult {
+        let legacy = json!({
+            "from": message.sender,
+            "to": [message.recipient],
+            "subject": message.subject,
+            "text": message.text,
+        });
+        let mut payload = legacy.clone();
+        payload["html"] = message.layout.render(message.reply_to).into();
+        if let Some(reply_to) = message.reply_to {
+            payload["reply_to"] = reply_to.into();
+        }
+        match self.send_payload(idempotency_key, &payload, attempt).await {
+            Ok(result) => result,
+            // Recover a delivery already sent by the plain-text release under the same key.
+            Err(PayloadConflict) => self
+                .send_payload(idempotency_key, &legacy, attempt)
+                .await
+                .unwrap_or(DeliveryResult::NeedsAttention),
+        }
+    }
+
+    async fn send_payload(
+        &self,
+        idempotency_key: &str,
+        payload: &Value,
+        attempt: i32,
+    ) -> Result<DeliveryResult, PayloadConflict> {
         let retry_after = 1 << attempt;
         let Ok(response) = self
             .client
             .post(&self.endpoint)
             .bearer_auth(&self.api_key)
             .header("Idempotency-Key", idempotency_key)
-            .json(&json!({
-                "from": message.sender,
-                "to": [message.recipient],
-                "subject": message.subject,
-                "text": message.text,
-            }))
+            .json(payload)
             .send()
             .await
         else {
-            return DeliveryResult::Retry(retry_after);
+            return Ok(DeliveryResult::Retry(retry_after));
         };
 
         let status = response.status();
         if status.is_success() {
-            return match response.json::<Acceptance>().await {
+            return Ok(match response.json::<Acceptance>().await {
                 Ok(accepted) => DeliveryResult::Accepted(accepted.id),
                 Err(_) => DeliveryResult::Retry(retry_after),
-            };
+            });
         }
         if status.is_server_error() {
-            return DeliveryResult::Retry(retry_after);
+            return Ok(DeliveryResult::Retry(retry_after));
         }
         let retry_after = response
             .headers()
@@ -190,6 +233,9 @@ impl InvitationMailer {
         if matches!(status, StatusCode::CONFLICT | StatusCode::TOO_MANY_REQUESTS) {
             let error = response.json::<ProviderError>().await.ok();
             let name = error.as_ref().map(|error| error.name.as_str());
+            if status == StatusCode::CONFLICT && name == Some("invalid_idempotent_request") {
+                return Err(PayloadConflict);
+            }
             if matches!(
                 (status, name),
                 (StatusCode::CONFLICT, Some("concurrent_idempotent_requests"))
@@ -198,10 +244,10 @@ impl InvitationMailer {
                         Some("rate_limit_exceeded") | None
                     )
             ) {
-                return DeliveryResult::Retry(retry_after);
+                return Ok(DeliveryResult::Retry(retry_after));
             }
         }
-        DeliveryResult::NeedsAttention
+        Ok(DeliveryResult::NeedsAttention)
     }
 }
 
@@ -258,11 +304,15 @@ struct ProviderError {
     name: String,
 }
 
+struct PayloadConflict;
+
 pub(crate) struct Message<'a> {
     pub(crate) sender: &'a str,
     pub(crate) recipient: &'a str,
     pub(crate) subject: &'a str,
     pub(crate) text: &'a str,
+    pub(crate) layout: EmailLayout<'a>,
+    pub(crate) reply_to: Option<&'a str>,
 }
 
 pub(crate) enum DeliveryResult {
