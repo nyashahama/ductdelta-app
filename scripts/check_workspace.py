@@ -180,6 +180,19 @@ def verify(server):
     print("PASS: same-origin sign-in, session rotation/logout, scoped capture and tamper-safe retries over HTTP")
 
 
+def verify_database_readiness(server):
+    finish_mail = "ductdelta.finish_activity_email(uuid, integer, uuid, integer)"
+    server.sql(f"REVOKE EXECUTE ON FUNCTION {finish_mail} FROM ductdelta_web_runtime")
+    server.request("/healthz", expected=503)
+    server.sql(f"GRANT EXECUTE ON FUNCTION {finish_mail} TO ductdelta_web_runtime")
+    server.request("/healthz", expected=204)
+    server.sql("ALTER ROLE dd_web BYPASSRLS")
+    server.request("/healthz", expected=503)
+    server.sql("ALTER ROLE dd_web NOBYPASSRLS")
+    server.request("/healthz", expected=204)
+    print("PASS: readiness rejects missing mail permissions and a database login that can bypass row policies")
+
+
 def verify_connection_reuse(server):
     def backend():
         return server.sql(
@@ -287,6 +300,7 @@ def main():
         if not args.empty:
             verify(server)
         if not args.serve:
+            verify_database_readiness(server)
             verify_connection_reuse(server)
             verify_connection_limit(server)
             verify_interrupted_capture(server)

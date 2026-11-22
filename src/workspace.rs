@@ -273,18 +273,19 @@ fn listen_address(railway: bool) -> Result<SocketAddr, &'static str> {
 }
 
 async fn health(State(workspace): State<Workspace>) -> StatusCode {
-    if !workspace.railway {
-        return StatusCode::NO_CONTENT;
-    }
-    // Check the migrated schema and the app's deliberately restricted database role.
     let ready = workspace
         .query(|client| {
             client
                 .query_one(
-                    "SELECT NOT current_setting('is_superuser')::boolean
+                    "SELECT NOT (rolsuper OR rolcreaterole OR rolcreatedb OR rolbypassrls)
                         AND pg_has_role('ductdelta_web_runtime', 'USAGE')
+                        AND NOT pg_has_role('ductdelta_owner', 'MEMBER')
                         AND has_function_privilege(
-                            'ductdelta.web_account_sessions(bytea)', 'EXECUTE')",
+                            'ductdelta.web_account_sessions(bytea)', 'EXECUTE')
+                        AND has_function_privilege('ductdelta.claim_activity_email()', 'EXECUTE')
+                        AND has_function_privilege(
+                            'ductdelta.finish_activity_email(uuid,integer,uuid,integer)', 'EXECUTE')
+                     FROM pg_catalog.pg_roles WHERE rolname = current_user",
                     &[],
                 )
                 .map(|row| row.get::<_, bool>(0))
