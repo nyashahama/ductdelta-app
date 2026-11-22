@@ -106,19 +106,39 @@ fn run() -> Result<(), &'static str> {
 }
 
 fn connect() -> Result<Client, &'static str> {
-    database_config()?
+    database_config(DatabaseTransport::LocalSocket)?
         .connect(NoTls)
         .map_err(|_| "Could not connect to PostgreSQL using the configured Unix socket.")
 }
 
-fn database_config() -> Result<Config, &'static str> {
+#[derive(Clone, Copy)]
+enum DatabaseTransport {
+    LocalSocket,
+    RailwayPrivate,
+}
+
+fn database_config(transport: DatabaseTransport) -> Result<Config, &'static str> {
     let connection = env::var("DUCTDELTA_DATABASE_URL")
-        .map_err(|_| "Set DUCTDELTA_DATABASE_URL to a PostgreSQL Unix socket connection.")?;
+        .map_err(|_| "Set DUCTDELTA_DATABASE_URL to the PostgreSQL connection settings.")?;
     let config: Config = connection
         .parse()
         .map_err(|_| "Invalid PostgreSQL connection settings.")?;
-    if !matches!(config.get_hosts(), [Host::Unix(_)]) || !config.get_hostaddrs().is_empty() {
-        return Err("The command line requires a single local PostgreSQL Unix socket.");
+    let hosts = config.get_hosts();
+    let has_explicit_addresses = !config.get_hostaddrs().is_empty();
+    match transport {
+        DatabaseTransport::LocalSocket
+            if has_explicit_addresses || !matches!(hosts, [Host::Unix(_)]) =>
+        {
+            Err("The command line requires a single local PostgreSQL Unix socket.")
+        }
+        DatabaseTransport::RailwayPrivate
+            if has_explicit_addresses
+                || !matches!(hosts, [Host::Tcp(host)] if host
+                    .strip_suffix(".railway.internal")
+                    .is_some_and(|service| !service.is_empty())) =>
+        {
+            Err("Use a single Railway private hostname for PostgreSQL.")
+        }
+        _ => Ok(config),
     }
-    Ok(config)
 }

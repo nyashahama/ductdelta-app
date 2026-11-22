@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::header;
-use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::{Json, Router, routing};
@@ -19,6 +19,7 @@ use tokio::net::TcpListener;
 use tokio::runtime;
 use uuid::Uuid;
 
+use crate::DatabaseTransport;
 use crate::invitation_mailer::InvitationMailer;
 use crate::observation;
 use crate::postgres_pool::{PostgresPool, QueryError};
@@ -29,6 +30,7 @@ pub(crate) struct Workspace {
     origin: String,
     host: String,
     secure: bool,
+    railway: bool,
     invitation_mailer: Option<Arc<InvitationMailer>>,
     company_setup_code: Option<Vec<u8>>,
 }
@@ -145,24 +147,24 @@ impl Workspace {
 }
 
 pub(crate) fn serve() -> Result<(), &'static str> {
-    let listen: SocketAddr = env::var("DUCTDELTA_LISTEN")
-        .unwrap_or_else(|_| "127.0.0.1:3000".to_owned())
-        .parse()
-        .map_err(|_| "Use a loopback address for DUCTDELTA_LISTEN.")?;
-    if !listen.ip().is_loopback() {
-        return Err("Bind DuctDelta on loopback and use a TLS proxy for remote access.");
-    }
+    let railway = env::var("DUCTDELTA_RAILWAY").as_deref() == Ok("1");
+    let listen = listen_address(railway)?;
     let origin = env::var("DUCTDELTA_ORIGIN").unwrap_or_else(|_| format!("http://{listen}"));
     let uri: Uri = origin.parse().map_err(|_| "Invalid DUCTDELTA_ORIGIN.")?;
     let authority = uri.authority().ok_or("Invalid DUCTDELTA_ORIGIN.")?;
     let secure = uri.scheme_str() == Some("https");
     if origin != format!("{}://{authority}", uri.scheme_str().unwrap_or_default())
-        || (!secure && origin != format!("http://{listen}"))
+        || (!secure && (railway || origin != format!("http://{listen}")))
     {
         return Err("Use an HTTPS origin or the exact local listener URL.");
     }
     let trace_requests = crate::request_trace::enabled(secure)?;
-    let mut database = crate::database_config()?;
+    let transport = if railway {
+        DatabaseTransport::RailwayPrivate
+    } else {
+        DatabaseTransport::LocalSocket
+    };
+    let mut database = crate::database_config(transport)?;
     database.connect_timeout(Duration::from_secs(3));
     database.options("-c statement_timeout=8000 -c lock_timeout=5000");
     // Keep a pool owner on this thread so the synchronous clients close outside
@@ -179,14 +181,20 @@ pub(crate) fn serve() -> Result<(), &'static str> {
         })
         .transpose()?;
     let invitation_mailer = InvitationMailer::from_env(secure)?.map(Arc::new);
-    if secure && invitation_mailer.is_some() && company_setup_code.is_none() {
-        return Err("Set DUCTDELTA_COMPANY_SETUP_CODE before enabling invitation email.");
+    if company_setup_code.is_none() {
+        if railway {
+            return Err("Set DUCTDELTA_COMPANY_SETUP_CODE for the Railway deployment.");
+        }
+        if secure && invitation_mailer.is_some() {
+            return Err("Set DUCTDELTA_COMPANY_SETUP_CODE before enabling invitation email.");
+        }
     }
     let workspace = Workspace {
         database: Arc::clone(&database),
         host: authority.as_str().to_owned(),
         origin,
         secure,
+        railway,
         invitation_mailer,
         company_setup_code,
     };
@@ -201,10 +209,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
         }
         let app = Router::new()
             .merge(crate::frontend::routes()?)
-            .route(
-                "/healthz",
-                routing::get(|| async { StatusCode::NO_CONTENT }),
-            )
+            .route("/healthz", routing::get(health))
             .route(
                 "/api/session",
                 routing::get(session_info).post(sign_in).delete(sign_out),
@@ -243,6 +248,50 @@ pub(crate) fn serve() -> Result<(), &'static str> {
     })
 }
 
+fn listen_address(railway: bool) -> Result<SocketAddr, &'static str> {
+    if railway {
+        let port = env::var("PORT")
+            .ok()
+            .and_then(|value| value.parse::<u16>().ok())
+            .filter(|port| *port != 0)
+            .ok_or("Set PORT to the Railway service port.")?;
+        return Ok(SocketAddr::from(([0, 0, 0, 0], port)));
+    }
+    let listen: SocketAddr = env::var("DUCTDELTA_LISTEN")
+        .unwrap_or_else(|_| "127.0.0.1:3000".to_owned())
+        .parse()
+        .map_err(|_| "Use a loopback address for DUCTDELTA_LISTEN.")?;
+    if !listen.ip().is_loopback() {
+        return Err("Bind DuctDelta on loopback and use a TLS proxy for remote access.");
+    }
+    Ok(listen)
+}
+
+async fn health(State(workspace): State<Workspace>) -> StatusCode {
+    if !workspace.railway {
+        return StatusCode::NO_CONTENT;
+    }
+    // Check the migrated schema and the app's deliberately restricted database role.
+    let ready = workspace
+        .query(|client| {
+            client
+                .query_one(
+                    "SELECT NOT current_setting('is_superuser')::boolean
+                        AND pg_has_role('ductdelta_web_runtime', 'USAGE')
+                        AND has_function_privilege(
+                            'ductdelta.web_account_sessions(bytea)', 'EXECUTE')",
+                    &[],
+                )
+                .map(|row| row.get::<_, bool>(0))
+        })
+        .await;
+    if matches!(ready, Ok(true)) {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    }
+}
+
 async fn same_origin(State(workspace): State<Workspace>, request: Request, next: Next) -> Response {
     let host = request
         .headers()
@@ -252,7 +301,11 @@ async fn same_origin(State(workspace): State<Workspace>, request: Request, next:
         .headers()
         .get(header::ORIGIN)
         .and_then(|value| value.to_str().ok());
-    if host != Some(workspace.host.as_str())
+    let railway_health = workspace.railway
+        && host == Some("healthcheck.railway.app")
+        && request.method() == Method::GET
+        && request.uri().path() == "/healthz";
+    if (host != Some(workspace.host.as_str()) && !railway_health)
         || (!request.method().is_safe() && origin != Some(workspace.origin.as_str()))
     {
         return Rejection(StatusCode::FORBIDDEN, "Request origin is not allowed.").into_response();
