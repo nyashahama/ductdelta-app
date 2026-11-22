@@ -40,7 +40,7 @@ async function publishProductTheme(folder, pages) {
   const [workspace, fonts, product] = await Promise.all([
     readFile(new URL(entry, directory), 'utf8'),
     readFile(new URL('../app/assets/css/public-sans.css', import.meta.url), 'utf8'),
-    readFile(new URL('product-dark.css', import.meta.url), 'utf8')
+    readFile(new URL('product-theme.css', import.meta.url), 'utf8')
   ])
   // Nuxt UI prerenders the configured color aliases in the workspace shell.
   const color = (name) => {
@@ -55,9 +55,9 @@ async function publishProductTheme(folder, pages) {
       shade => `--product-workspace-neutral-${shade}: ${color(`neutral-${shade}`)};`
     )
   ]
-  const css = `${fonts}\nhtml.dark {\n  ${palette.join('\n  ')}\n}\n\n${product}`
+  const css = `${fonts}\n:root {\n  ${palette.join('\n  ')}\n}\n\n${product}`
   const hash = createHash('sha256').update(css).digest('hex').slice(0, 16)
-  const asset = `_astro/workspace-dark.${hash}.css`
+  const asset = `_astro/workspace-theme.${hash}.css`
   const link = `<link rel="stylesheet" data-product-theme href="/product/${asset}">`
   await writeFile(new URL(asset, folder), css)
   for (const page of pages) {

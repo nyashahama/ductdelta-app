@@ -1,3 +1,10 @@
+/* ScrewFast's filled primary buttons share the workspace accent in both themes. */
+.bg-orange-400 {
+  --color-orange-400: var(--product-workspace-primary);
+  --color-orange-500: color-mix(in oklab, var(--product-workspace-primary) 75%, transparent);
+  color: var(--product-workspace-neutral-900);
+}
+
 /* Apply the workspace palette to the ScrewFast utilities in dark mode. */
 html.dark {
   color-scheme: dark;
@@ -12,7 +19,6 @@ html.dark {
   --color-neutral-900: var(--product-workspace-neutral-900);
   --color-orange-300: var(--product-workspace-primary);
   --color-orange-400: var(--product-workspace-primary);
-  --color-orange-500: color-mix(in oklab, var(--product-workspace-primary) 75%, transparent);
   --color-yellow-400: var(--product-workspace-primary);
 }
 
@@ -41,10 +47,6 @@ html.dark header nav {
 
 html.dark [class~="dark:hover:bg-zinc-600"]:hover {
   background-color: var(--product-workspace-neutral-700);
-}
-
-html.dark .bg-orange-400 {
-  color: var(--product-workspace-neutral-900);
 }
 
 html.dark :is([stroke="#ea580c"], [stroke="#fbbf24"]) {

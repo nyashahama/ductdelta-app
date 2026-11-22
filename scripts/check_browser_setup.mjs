@@ -21,6 +21,11 @@ const productTheme = (page) => page.evaluate(() => {
     surface: getComputedStyle(document.querySelector('header nav')).backgroundColor
   }
 })
+const actionColors = (action) => action.evaluate(async element => {
+  await Promise.all(element.getAnimations().map(animation => animation.finished))
+  const style = getComputedStyle(element)
+  return { background: style.backgroundColor, color: style.color }
+})
 
 try {
   const desktop = await browser.newContext({ viewport: { width: 1440, height: 1000 }, colorScheme: 'light' })
@@ -48,10 +53,7 @@ try {
       surface
     }
   })
-  const workspaceAction = await button(owner, 'Sign in').evaluate(el => ({
-    background: getComputedStyle(el).backgroundColor,
-    color: getComputedStyle(el).color
-  }))
+  const workspaceAction = await actionColors(button(owner, 'Sign in'))
   const policyErrors = []
   const recordPolicyError = (message) => {
     if (message.type() === 'error' && /content security policy/i.test(message.text())) {
@@ -77,13 +79,17 @@ try {
     const faces = await document.fonts.load('400 16px "Public Sans"')
     return faces.some(face => face.status === 'loaded')
   }), 'Marketing reuses the workspace webfont')
-  assert.deepEqual(await link(owner, 'See a worked example').evaluate(el => ({
-    background: getComputedStyle(el).backgroundColor,
-    color: getComputedStyle(el).color
-  })), workspaceAction, 'Dashboard primary action colors in dark mode')
+  const exampleAction = link(owner, 'See a worked example')
+  assert.deepEqual(await actionColors(exampleAction), workspaceAction, 'Dashboard primary action colors in dark mode')
+  await exampleAction.hover()
+  const hoverAction = await actionColors(exampleAction)
+  assert.notEqual(hoverAction.background, workspaceAction.background, 'Primary action has a hover state')
   await button(owner, 'Light Theme Toggle').click()
   assert.deepEqual(await productTheme(owner), lightTheme, 'Light mode preserves its palette')
-  await link(owner, 'See a worked example').click()
+  assert.deepEqual(await actionColors(exampleAction), workspaceAction, 'Dashboard primary action colors in light mode')
+  await exampleAction.hover()
+  assert.deepEqual(await actionColors(exampleAction), hoverAction, 'Primary action hover matches in both themes')
+  await exampleAction.click()
   await heading(owner, 'One duct reroute').waitFor()
   await owner.getByRole('tab', { name: 'Payment balance', exact: true }).click()
   await heading(owner, 'R17,900.00 still due').waitFor()
