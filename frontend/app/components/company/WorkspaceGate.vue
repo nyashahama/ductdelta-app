@@ -383,6 +383,13 @@ async function submit() {
             variant="link"
             @click="changeMode('recover')"
           />
+          <UButton
+            label="About DuctDelta"
+            color="neutral"
+            variant="link"
+            to="/product/"
+            external
+          />
         </div>
         <UButton
           v-else

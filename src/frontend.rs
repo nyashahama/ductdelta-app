@@ -1,4 +1,4 @@
-//! Serve the prebuilt Nuxt workspace and its versioned browser assets.
+//! Serve the prebuilt workspace, public product page, and browser assets.
 
 use std::collections::HashMap;
 use std::env;
@@ -12,7 +12,7 @@ use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::http::header;
 use axum::http::header::HeaderValue;
-use axum::response::{Html, IntoResponse};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing;
 
 use crate::workspace::Workspace;
@@ -29,13 +29,15 @@ struct Frontend {
 }
 
 impl Frontend {
-    fn load(directory: PathBuf) -> Result<Self, &'static str> {
+    fn load(directory: &FilePath) -> Result<Self, &'static str> {
         let shell = read_file(&directory.join("index.html")).map_err(
             |_| "Build the Nuxt workspace and set DUCTDELTA_WEB_DIST to .output/public.",
         )?;
-        let script_hashes = read_hashes(&directory.join("script-hashes.txt"))?;
-        let style_hashes = read_hashes(&directory.join("style-hashes.txt"))?;
-        let policy = content_policy(&script_hashes, &style_hashes)?;
+        // Nuxt UI uses inline attributes for component sizing and transitions.
+        let policy = content_policy(
+            directory,
+            "; form-action 'self'; style-src-attr 'unsafe-inline'",
+        )?;
         let nuxt_assets = directory.join("_nuxt");
         if !fs::symlink_metadata(&nuxt_assets).is_ok_and(|metadata| metadata.is_dir()) {
             return Err("Nuxt assets are missing. Rebuild the Nuxt workspace.");
@@ -68,16 +70,17 @@ fn read_hashes(path: &FilePath) -> Result<String, &'static str> {
         .ok_or("Frontend content hashes are missing or invalid. Rebuild the Nuxt workspace.")
 }
 
-fn content_policy(scripts: &str, styles: &str) -> Result<HeaderValue, &'static str> {
+fn content_policy(directory: &FilePath, constraints: &str) -> Result<HeaderValue, &'static str> {
+    let scripts = read_hashes(&directory.join("script-hashes.txt"))?;
+    let styles = read_hashes(&directory.join("style-hashes.txt"))?;
     let mut policy = String::from(concat!(
         "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; ",
-        "form-action 'self'; script-src 'self'",
+        "script-src 'self'",
     ));
-    append_hashes(&mut policy, scripts)?;
+    append_hashes(&mut policy, &scripts)?;
     policy.push_str("; style-src 'self'");
-    append_hashes(&mut policy, styles)?;
-    // Nuxt UI uses inline attributes for component sizing and transitions.
-    policy.push_str("; style-src-attr 'unsafe-inline'");
+    append_hashes(&mut policy, &styles)?;
+    policy.push_str(constraints);
     HeaderValue::from_str(&policy).map_err(|_| "Invalid frontend content policy.")
 }
 
@@ -107,12 +110,12 @@ fn load_assets(
     prefix: &str,
     assets: &mut HashMap<String, Asset>,
 ) -> Result<(), &'static str> {
-    let entries = fs::read_dir(directory).map_err(|_| "Could not open the Nuxt assets.")?;
+    let entries = fs::read_dir(directory).map_err(|_| "Could not open the frontend assets.")?;
     for entry in entries {
-        let entry = entry.map_err(|_| "Could not read a Nuxt asset.")?;
+        let entry = entry.map_err(|_| "Could not read a frontend asset.")?;
         let file_type = entry
             .file_type()
-            .map_err(|_| "Could not read a Nuxt asset.")?;
+            .map_err(|_| "Could not read a frontend asset.")?;
         let Ok(name) = entry.file_name().into_string() else {
             continue;
         };
@@ -128,7 +131,7 @@ fn load_assets(
         } else if file_type.is_file()
             && let Some(media_type) = media_type(&name)
         {
-            let bytes = read_file(&entry.path()).map_err(|_| "Could not read a Nuxt asset.")?;
+            let bytes = read_file(&entry.path()).map_err(|_| "Could not read a frontend asset.")?;
             assets.insert(
                 format!("{prefix}{name}"),
                 Asset {
@@ -149,8 +152,78 @@ fn media_type(name: &str) -> Option<&'static str> {
         "woff2" => Some("font/woff2"),
         "ttf" => Some("font/ttf"),
         "otf" => Some("font/otf"),
+        "avif" => Some("image/avif"),
+        "webp" => Some("image/webp"),
         _ => None,
     }
+}
+
+fn cached_asset(asset: &Asset) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, asset.media_type),
+            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
+        asset.bytes.clone(),
+    )
+        .into_response()
+}
+
+fn product_routes(directory: &FilePath) -> Result<Router<Workspace>, &'static str> {
+    let policy = content_policy(directory, "; form-action 'none'")?;
+    let assets_directory = directory.join("_astro");
+    if !fs::symlink_metadata(&assets_directory).is_ok_and(|metadata| metadata.is_dir()) {
+        return Err("Product assets are missing. Rebuild the frontend.");
+    }
+    let mut assets = HashMap::new();
+    load_assets(&assets_directory, "", &mut assets)?;
+    if assets.is_empty() {
+        return Err("The public product pages have no compiled assets.");
+    }
+    let licenses = Bytes::from(
+        read_file(&directory.join("licenses.txt"))
+            .map_err(|_| "Product license notices are missing. Rebuild the frontend.")?,
+    );
+    let assets = Arc::new(assets);
+    let mut router = Router::new()
+        .route(
+            "/product/_astro/{*path}",
+            routing::get(move |Path(path): Path<String>| async move {
+                match assets.get(&path) {
+                    Some(asset) => cached_asset(asset),
+                    None => StatusCode::NOT_FOUND.into_response(),
+                }
+            }),
+        )
+        .route(
+            "/product/licenses.txt",
+            routing::get(move || async move {
+                (
+                    [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                    licenses,
+                )
+            }),
+        );
+
+    for (path, file) in [
+        ("/product", "index.html"),
+        ("/product/workflow", "workflow/index.html"),
+        ("/product/example", "example/index.html"),
+        ("/product/faq", "faq/index.html"),
+    ] {
+        let html = Bytes::from(
+            read_file(&directory.join(file))
+                .map_err(|_| "A public product page is missing. Rebuild the frontend.")?,
+        );
+        let policy = policy.clone();
+        let page = routing::get(move || async move {
+            ([(header::CONTENT_SECURITY_POLICY, policy)], Html(html))
+        });
+        router = router
+            .route(path, page.clone())
+            .route(&format!("{path}/"), page);
+    }
+    Ok(router)
 }
 
 pub(crate) fn routes() -> Result<Router<Workspace>, &'static str> {
@@ -166,7 +239,9 @@ pub(crate) fn routes() -> Result<Router<Workspace>, &'static str> {
         ));
     };
 
-    let frontend = Arc::new(Frontend::load(directory.into())?);
+    let directory = PathBuf::from(directory);
+    let product = product_routes(&directory.join("product"))?;
+    let frontend = Arc::new(Frontend::load(&directory)?);
     let page = Arc::clone(&frontend);
     Ok(Router::new()
         .route(
@@ -178,19 +253,13 @@ pub(crate) fn routes() -> Result<Router<Workspace>, &'static str> {
                 )
             }),
         )
+        .merge(product)
         .route(
             "/_nuxt/{*path}",
             routing::get(move |Path(path): Path<String>| async move {
                 match frontend.assets.get(&path) {
                     Some(asset) => {
-                        let mut response = (
-                            [
-                                (header::CONTENT_TYPE, asset.media_type),
-                                (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
-                            ],
-                            asset.bytes.clone(),
-                        )
-                            .into_response();
+                        let mut response = cached_asset(asset);
                         if asset.media_type == "font/woff2" && path.starts_with("fonts/") {
                             response.headers_mut().insert(
                                 header::ACCESS_CONTROL_ALLOW_ORIGIN,
