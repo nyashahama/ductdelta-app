@@ -4,6 +4,7 @@ import type { Project } from '../../utils/api'
 import CaseActions from './CaseActions.vue'
 import CaseFiles from './CaseFiles.vue'
 import CaseFinance from './CaseFinance.vue'
+import CaseNoticeCopies from './CaseNoticeCopies.vue'
 import CaseTimeline from './CaseTimeline.vue'
 import CreateCaseModal from './CreateCaseModal.vue'
 import { casePath, type CasePage, type CaseRecord, type CaseSummary } from './case-data'
@@ -219,6 +220,13 @@ function savedAction() {
             {{ confirmation }}
           </p>
           <CaseFinance v-if="record.financial" :value="record.financial" />
+          <CaseNoticeCopies
+            :key="selectedPath"
+            :path="selectedPath"
+            :record="record"
+            :permission="project.permission"
+            @session-expired="expire"
+          />
           <CaseFiles
             :key="selectedPath + record.capabilities.join('|')"
             :path="selectedPath"
