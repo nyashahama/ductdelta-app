@@ -45,3 +45,13 @@ Company administrators can choose a default invitation lifetime from 1 to 14 day
 The server binds to loopback at `127.0.0.1:3000` by default. Configure a loopback `DUCTDELTA_LISTEN` and the exact public HTTPS `DUCTDELTA_ORIGIN` for a TLS reverse proxy. Preserve the configured Host header and apply request time and rate limits at the proxy. The local demo uses HTTP on its exact loopback address only.
 
 The server reuses up to 16 PostgreSQL connections per process. Requests that need a database connection receive HTTP 503 while all 16 slots are occupied. A connection lost during capture can leave the result unknown. If you retry the capture, use the original operation UUID and payload. Run `python3 scripts/check_workspace.py` to verify reuse, permission revocation, recovery after a disconnect, and the concurrency limit.
+
+### Invitation email
+
+Company administrators can create a private link or email an invitation through Resend. For email, configure `DUCTDELTA_RESEND_API_KEY` with sending access, `DUCTDELTA_RESEND_FROM` with an address on a verified domain, and `DUCTDELTA_INVITE_SIGNING_KEY` with a persistent 32-byte secret encoded as 64 hex digits. Keep the signing key in the deployment secret store. Changing it prevents already queued messages from being sent. Delivered invitation links remain valid until use, cancellation, or expiry.
+
+Email on a public HTTPS origin requires `DUCTDELTA_COMPANY_SETUP_CODE`, a separate 32-byte random value encoded as 64 hex digits. Share the code privately with the people authorized to create companies. Invited team members can join with their own links.
+
+Disable open and click tracking on the sending domain. The message contains the private link. Restrict access to the sender account and its logs. The app distinguishes a queued email from one accepted by Resend. Inbox delivery can be checked through Resend. If a message needs attention, cancel it and create a new invitation or private link.
+
+Run `python3 scripts/check_invitation_email.py` for retry, isolation, and one-time acceptance with a loopback provider. Set `DUCTDELTA_PLAYWRIGHT_MODULE` and pass `--browser` to send and open an invitation in Chrome with that provider. [Resend sender setup](https://resend.com/docs/dashboard/domains/introduction)

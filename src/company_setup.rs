@@ -23,6 +23,10 @@ use crate::workspace::Workspace;
 pub(crate) fn routes() -> Router<Workspace> {
     Router::new()
         .route("/api/companies", routing::get(companies).post(register))
+        .route(
+            "/api/company-registration",
+            routing::get(registration_policy),
+        )
         .route("/api/account/recover", routing::post(recover))
         .route(
             "/api/companies/{company}/projects",
@@ -76,6 +80,11 @@ struct CompanyDraft {
     company: String,
     name: String,
     recovery_key: String,
+    setup_code: Option<String>,
+}
+
+async fn registration_policy(State(workspace): State<Workspace>) -> Json<Value> {
+    Json(json!({ "setup_code_required": workspace.company_setup_code_required() }))
 }
 
 pub(crate) fn checked_name(name: &str) -> Reply<&str> {
@@ -90,6 +99,7 @@ async fn register(
     State(workspace): State<Workspace>,
     Json(draft): Json<CompanyDraft>,
 ) -> Reply<Response> {
+    workspace.check_company_setup_code(draft.setup_code.as_deref())?;
     let company = checked_name(&draft.company)?.to_owned();
     let name = checked_name(&draft.name)?.to_owned();
     let keys = EnrollmentKeys::new(draft.recovery_key)?;

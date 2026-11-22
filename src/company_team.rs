@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 use crate::company_setup;
 use crate::company_setup::EnrollmentKeys;
+use crate::invitation_mailer;
 use crate::workspace;
 use crate::workspace::Rejection;
 use crate::workspace::Reply;
@@ -27,7 +28,7 @@ pub(crate) fn routes() -> Router<Workspace> {
         .route("/api/companies/{company}/team", routing::get(team))
         .route(
             "/api/companies/{company}/invitations",
-            routing::post(invite),
+            routing::get(delivery_status).post(invite),
         )
         .route(
             "/api/companies/{company}/invitations/{id}",
@@ -66,6 +67,30 @@ async fn team(
 struct Invitation {
     name: String,
     role: String,
+    email: Option<String>,
+    operation_id: Option<Uuid>,
+}
+
+async fn delivery_status(
+    State(workspace): State<Workspace>,
+    Path(company): Path<Uuid>,
+    headers: HeaderMap,
+) -> Reply<Json<Value>> {
+    let session = workspace::session(&headers)?;
+    let email_enabled = workspace.invitation_mailer().is_some();
+    let deliveries: Value = workspace
+        .query(move |database| {
+            database
+                .query_one(
+                    "SELECT ductdelta.web_invitation_email($1, $2)",
+                    &[&session, &company],
+                )?
+                .try_get(0)
+        })
+        .await?;
+    Ok(Json(
+        json!({ "email_enabled": email_enabled, "deliveries": deliveries }),
+    ))
 }
 
 async fn invite(
@@ -76,6 +101,35 @@ async fn invite(
 ) -> Reply<(StatusCode, Json<Value>)> {
     let session = workspace::session(&headers)?;
     let name = company_setup::checked_name(&draft.name)?.to_owned();
+    if let Some(email) = draft.email {
+        let email = invitation_mailer::mailbox(&email)?;
+        let operation_id = draft
+            .operation_id
+            .ok_or_else(|| Rejection::invalid("An email invitation requires an operation ID."))?;
+        let mailer = workspace.invitation_mailer().ok_or_else(|| {
+            Rejection::unavailable(
+                "Invitation email is unavailable. Create a link to share privately.",
+            )
+        })?;
+        let invitation_id = Uuid::new_v4();
+        let digest = workspace::key_digest(&mailer.token(invitation_id));
+        let sender = mailer.sender().to_owned();
+        let origin = workspace.origin().to_owned();
+        let invitation = workspace
+            .query(move |database| {
+                database
+                    .query_one(
+                        "SELECT ductdelta.web_queue_invitation($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+                        &[
+                            &session, &company, &operation_id, &invitation_id, &name, &draft.role,
+                            &digest, &email, &sender, &origin,
+                        ],
+                    )?
+                    .try_get(0)
+            })
+            .await?;
+        return Ok((StatusCode::ACCEPTED, Json(invitation)));
+    }
     let token = workspace::random_key();
     let digest = workspace::key_digest(&token);
     let mut invitation: Value = workspace

@@ -2,24 +2,30 @@
 import { ApiError, api, reportError, requestJson } from '~/utils/api'
 import CompanyAccessHistory from '~/components/company/CompanyAccessHistory.vue'
 import MemberAccess from '~/components/company/MemberAccess.vue'
-import type { CompanyProject, Member, Team } from '~/components/company/access'
+import type { CompanyProject, InvitationDelivery, Member, Team } from '~/components/company/access'
 
 const props = defineProps<{ companyId: string }>()
 const { expire, loadCompanies, loadProjects, target } = useWorkspace()
 const path = '/api/companies/' + props.companyId
 const projects = ref<CompanyProject[]>([])
 const team = ref<Team>()
+const delivery = ref<InvitationDelivery>()
+const emailInvites = computed(() => new Map(delivery.value?.deliveries.map(entry => [entry.id, entry])))
 const loading = ref(false)
 const pending = ref(false)
 const error = ref('')
 const projectName = ref('')
 const inviteName = ref('')
+const inviteEmail = ref('')
 const inviteRole = ref<Member['role']>('member')
 const inviteLink = ref<{ id: string, url: string, expiresAt: string }>()
 const copied = ref('')
 const editing = ref<Member>()
 const historyRevision = ref(0)
 let projectDraft: { name: string, operation_id: string } | undefined
+let inviteDraft: { name: string, role: Member['role'], email: string, operation_id: string } | undefined
+let emailPoll: ReturnType<typeof setInterval> | undefined
+let checkingEmail = false
 const roles = [
   { label: 'Team member', value: 'member' },
   { label: 'Company administrator', value: 'admin' }
@@ -30,12 +36,14 @@ async function refresh() {
   loading.value = true
   error.value = ''
   try {
-    const [projectList, companyTeam] = await Promise.all([
+    const [projectList, companyTeam, emailDelivery] = await Promise.all([
       api<CompanyProject[]>(path + '/projects'),
-      api<Team>(path + '/team')
+      api<Team>(path + '/team'),
+      api<InvitationDelivery>(path + '/invitations')
     ])
     projects.value = projectList
     team.value = companyTeam
+    delivery.value = emailDelivery
     if (inviteLink.value && !companyTeam.invitations.some(invite => invite.id === inviteLink.value?.id)) {
       inviteLink.value = undefined
     }
@@ -44,6 +52,7 @@ async function refresh() {
     if (cause instanceof ApiError && cause.status === 404) {
       projects.value = []
       team.value = undefined
+      delivery.value = undefined
       inviteLink.value = undefined
       editing.value = undefined
       await loadCompanies()
@@ -54,7 +63,23 @@ async function refresh() {
   }
 }
 
-onMounted(refresh)
+async function refreshDelivery() {
+  if (checkingEmail || loading.value || pending.value || !delivery.value?.deliveries.some(item => item.state === 'queued')) return
+  checkingEmail = true
+  try {
+    delivery.value = await api<InvitationDelivery>(path + '/invitations')
+  } catch (cause) {
+    if (cause instanceof ApiError && [401, 404].includes(cause.status)) await refresh()
+  } finally {
+    checkingEmail = false
+  }
+}
+
+onMounted(() => {
+  void refresh()
+  emailPoll = setInterval(refreshDelivery, 3000)
+})
+onBeforeUnmount(() => clearInterval(emailPoll))
 
 async function write(action: () => Promise<void>) {
   if (pending.value || loading.value) return
@@ -83,9 +108,23 @@ function createProject() {
 
 function invite() {
   return write(async () => {
+    const name = inviteName.value.trim()
+    const role = inviteRole.value
+    const email = inviteEmail.value.trim()
+    if (delivery.value?.email_enabled && email) {
+      if (inviteDraft?.name !== name || inviteDraft.role !== role || inviteDraft.email !== email) {
+        inviteDraft = { name, role, email, operation_id: crypto.randomUUID() }
+      }
+      await api(path + '/invitations', requestJson(inviteDraft))
+      inviteLink.value = undefined
+      inviteEmail.value = ''
+      inviteName.value = ''
+      inviteDraft = undefined
+      return
+    }
     const result = await api<{ id: string, token: string, expires_at: string }>(path + '/invitations', requestJson({
-      name: inviteName.value.trim(),
-      role: inviteRole.value
+      name,
+      role
     }))
     inviteLink.value = { id: result.id, url: location.origin + '/#invite=' + result.token, expiresAt: result.expires_at }
     inviteName.value = ''
@@ -195,6 +234,20 @@ async function memberChanged() {
                 required
               />
             </UFormField>
+            <UFormField
+              v-if="delivery?.email_enabled"
+              label="Invitee email"
+              name="invitee-email"
+              hint="Optional. Leave blank to create a private link."
+            >
+              <UInput
+                v-model="inviteEmail"
+                type="email"
+                class="w-full"
+                :maxlength="254"
+                :readonly="pending"
+              />
+            </UFormField>
             <UFormField label="Company role" name="invite-role">
               <USelect
                 v-model="inviteRole"
@@ -203,7 +256,11 @@ async function memberChanged() {
                 :disabled="pending"
               />
             </UFormField>
-            <UButton type="submit" label="Create invitation" :disabled="pending || loading || !inviteName.trim()" />
+            <UButton
+              type="submit"
+              :label="delivery?.email_enabled && inviteEmail.trim() ? 'Send invitation email' : 'Create invitation'"
+              :disabled="pending || loading || !inviteName.trim()"
+            />
           </form>
           <div v-if="inviteLink" class="mt-4 space-y-2">
             <UFormField label="Invitation link" name="invite-link">
@@ -236,6 +293,22 @@ async function memberChanged() {
                 <p class="text-sm text-muted">
                   Expires {{ expiry(invitation.expires_at) }}
                 </p>
+                <template v-if="emailInvites.get(invitation.id)">
+                  <p class="text-sm text-muted">
+                    {{ emailInvites.get(invitation.id)?.email }}
+                  </p>
+                  <div role="status">
+                    <p v-if="emailInvites.get(invitation.id)?.state === 'queued'" class="text-sm text-muted">
+                      Email queued
+                    </p>
+                    <p v-else-if="emailInvites.get(invitation.id)?.state === 'accepted'" class="text-sm text-muted">
+                      Email accepted by provider
+                    </p>
+                    <p v-else class="text-sm text-error">
+                      Email needs attention. Cancel and create a new invitation or private link.
+                    </p>
+                  </div>
+                </template>
               </div>
               <UButton
                 label="Cancel invitation"
