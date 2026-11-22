@@ -5,8 +5,13 @@ use std::time::Duration;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::invitation_mailer::{DeliveryOutcome, DeliveryResult, InvitationMailer, Message};
-use crate::workspace::{Reply, Workspace};
+use crate::email_layout::EmailLayout;
+use crate::invitation_mailer::DeliveryOutcome;
+use crate::invitation_mailer::DeliveryResult;
+use crate::invitation_mailer::InvitationMailer;
+use crate::invitation_mailer::Message;
+use crate::workspace::Reply;
+use crate::workspace::Workspace;
 
 pub(crate) async fn deliver_queued(mailer: &InvitationMailer, workspace: &Workspace) {
     loop {
@@ -69,6 +74,8 @@ impl ActivityEmail {
             "close" => "change case closed",
             _ => return DeliveryResult::NeedsAttention,
         };
+        let description = format!("DuctDelta recorded this activity: {summary}.");
+        let detail = format!("Time: {}.", self.occurred_at);
         mailer
             .send(
                 &format!("activity/{}", self.id),
@@ -76,10 +83,14 @@ impl ActivityEmail {
                     sender: &self.sender,
                     recipient: &self.recipient,
                     subject: &format!("DuctDelta: {summary}"),
-                    text: &format!(
-                        "DuctDelta recorded this activity: {summary}.\n\nTime: {}.",
-                        self.occurred_at
-                    ),
+                    text: &format!("{description}\n\n{detail}"),
+                    layout: EmailLayout {
+                        heading: "Workspace activity",
+                        message: &description,
+                        detail: &detail,
+                        action: None,
+                    },
+                    reply_to: None,
                 },
                 self.attempt,
             )

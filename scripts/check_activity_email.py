@@ -70,6 +70,10 @@ def verify(server, requests, release):
         assert message["from"] == "DuctDelta <activity@example.test>"
         assert message["to"] == ["first@example.test"]
         assert " UTC" in message["text"]
+        assert " UTC" in message.get("html", ""), "The activity layout must include the UTC timestamp"
+        assert "DuctDelta" in message["html"] and "<h1" in message["html"]
+        assert "href=" not in message["html"] and "reply_to" not in message
+        assert f"{server.origin}/_nuxt/fonts/public-sans-2.001/public-sans-normal-latin.woff2" in message["html"]
         assert "Private " not in str(message) and "Before alerts" not in str(message)
         assert invitation["token"] not in str(message)
     server.sql("DELETE FROM ductdelta.activity_email_settings")
