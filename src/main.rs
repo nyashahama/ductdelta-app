@@ -8,6 +8,7 @@ mod email_layout;
 mod evidence;
 mod frontend;
 mod invitation_mailer;
+mod issued_notice;
 mod observation;
 mod overview;
 mod postgres_pool;

@@ -1,0 +1,32 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #f4f7f8;
+  color: #132c37;
+  font: 1rem/1.55 system-ui, sans-serif;
+}
+main {
+  max-width: 36rem;
+  margin: clamp(1rem, 12vh, 7rem) auto;
+  padding: clamp(1.25rem, 5vw, 2.75rem);
+  background: #fff;
+  border: 1px solid #d6e0e3;
+  border-radius: .75rem;
+}
+h1 { margin: 0; line-height: 1.15; }
+.brand { margin: 0 0 .75rem; color: #345466; font-weight: 650; }
+button {
+  padding: .7rem 1rem;
+  background: #153849;
+  color: #fff;
+  border: 0;
+  border-radius: .35rem;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+button:focus-visible { outline: 3px solid #386d8c; outline-offset: 3px; }
+button:disabled { opacity: .65; cursor: wait; }
+@media (max-width: 40rem) {
+  main { margin-inline: 1rem; }
+}

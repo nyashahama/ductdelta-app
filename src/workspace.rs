@@ -234,6 +234,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
             .merge(crate::company_access_history::routes())
             .merge(crate::cases::routes())
             .merge(crate::evidence::routes())
+            .merge(crate::issued_notice::routes())
             .merge(crate::overview::routes())
             .layer(DefaultBodyLimit::max(64 * 1024))
             .layer(middleware::from_fn_with_state(
