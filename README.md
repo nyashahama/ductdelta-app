@@ -18,6 +18,12 @@ Open the printed loopback URL and choose **Create a company**. Save the access a
 
 The workspace uses the [Nuxt UI Dashboard template](https://github.com/nuxt-ui-templates/dashboard/tree/922a0df0e61f4881ca4f6999ab5c755112ae5789). The template's [MIT license](frontend/LICENSE) is included. Rust serves the compiled frontend and the project API from the same origin.
 
+## Public product page
+
+The production build serves the ScrewFast marketing pages at `/product/`, with separate workflow, worked example and FAQ pages. The workspace and existing invitation links open at `/`. Signed-out visitors can reach the product pages through **About DuctDelta**. [Marketing source and release checks](docs/marketing.md)
+
+After building the frontend, run `python3 scripts/check_frontend.py` to verify the routes, local assets, content security policies and protected workspace API against the local Rust server.
+
 ## Supported workflow
 
 Project members can record an observation or a change case before a revised drawing arrives. Assigned roles can record notices, directions, signed quote amounts, performed work, certificates, retention, receipts and closeout. Evidence files retain their original bytes and SHA-256 hashes. Finance files require a finance grant.

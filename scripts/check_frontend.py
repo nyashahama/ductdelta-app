@@ -19,6 +19,8 @@ ASSET_TYPES = {
     ".woff2": "font/woff2",
     ".ttf": "font/ttf",
     ".otf": "font/otf",
+    ".avif": "image/avif",
+    ".webp": "image/webp",
 }
 SCRIPT_TYPES = {
     "", "module", "importmap", "speculationrules",
@@ -49,8 +51,13 @@ class Shell(HTMLParser):
                 self.script = []
         if tag == "link" and attributes.get("rel") in ("stylesheet", "modulepreload", "preload"):
             asset = attributes.get("href", "")
-            if asset.startswith("/_nuxt/"):
+            if asset.startswith(("/_nuxt/", "/product/_astro/")):
                 self.assets.add(asset)
+        if tag == "img":
+            self.assets.add(attributes["src"])
+            for source in attributes.get("srcset", "").split(","):
+                if source.strip():
+                    self.assets.add(source.split()[0])
 
     def handle_endtag(self, tag):
         if tag == "style" and self.style is not None:
@@ -133,6 +140,72 @@ def verify(server, public_dir):
     server.request("/assets/workspace.js", expected=404)
     server.request("/api/projects", expected=401)
     print("PASS: Nuxt shell, exact bootstrap receipt, typed immutable assets and protected same-origin API")
+
+    verify_product(server, public_dir / "product", policy)
+
+
+def verify_product(server, product_dir, workspace_policy):
+    scripts = set()
+    styles = set()
+    references = set()
+    pages = {
+        "": b"Keep mechanical changes",
+        "workflow/": b"From site observation to closeout",
+        "example/": b"Why this change stays open",
+        "faq/": b"Certificates, receipts and closeout",
+    }
+    script_receipt = set((product_dir / "script-hashes.txt").read_text().splitlines())
+    style_receipt = set((product_dir / "style-hashes.txt").read_text().splitlines())
+    for path, expected in pages.items():
+        url = f"/product/{path}"
+        page, headers = server.request(url)
+        assert page == (product_dir / path / "index.html").read_bytes(), url
+        assert expected in page, url
+        assert re.search(rb'<a\b[^>]*href="/"[^>]*>Open workspace</a>', page), url
+        assert f'<link rel="canonical" href="https://ductdelta.com{url}">'.encode() in page
+        assert b"noindex" not in page
+        assert headers["Content-Type"] == "text/html; charset=utf-8"
+        assert headers["Cache-Control"] == "no-store"
+        assert server.request(url.rstrip("/"))[0] == page
+        policy = headers["Content-Security-Policy"]
+        assert policy != workspace_policy
+        directives = dict(directive.strip().split(" ", 1) for directive in policy.split(";"))
+        assert directives["default-src"] == "'self'"
+        assert directives["frame-ancestors"] == "'none'"
+        assert directives["form-action"] == "'none'"
+        assert "'unsafe-" not in policy
+        assert set(re.findall(r"'sha256-([^']+)'", directives["script-src"])) == script_receipt
+        assert set(re.findall(r"'sha256-([^']+)'", directives["style-src"])) == style_receipt
+        shell = Shell()
+        shell.feed(page.decode())
+        shell.close()
+        scripts.update(shell.executable_hashes)
+        styles.update(shell.style_hashes)
+        references.update(shell.assets)
+
+    assert scripts == script_receipt
+    # The theme switch inserts this exact rule while the document theme changes.
+    styles.add(base64.b64encode(hashlib.sha256(b"*{transition: unset !important;}").digest()).decode())
+    assert styles == style_receipt
+    assert references
+    for url in references:
+        assert url.startswith("/product/_astro/"), url
+        asset = product_dir / url.removeprefix("/product/")
+        body, headers = server.request(url)
+        assert body == asset.read_bytes(), url
+        assert headers["Content-Type"] == ASSET_TYPES[asset.suffix], url
+        assert "immutable" in headers["Cache-Control"], url
+        assert headers["X-Content-Type-Options"] == "nosniff", url
+
+    licenses, headers = server.request("/product/licenses.txt")
+    assert licenses == (product_dir / "licenses.txt").read_bytes()
+    assert headers["Content-Type"] == "text/plain; charset=utf-8"
+    server.request("/product/unknown", expected=404)
+    server.request("/product/_astro/unknown.js", expected=404)
+    server.request("/product/_astro/%2e%2e/index.html", expected=404)
+    server.request("/product/script-hashes.txt", expected=404)
+    server.request("/product/style-hashes.txt", expected=404)
+    print("PASS: four public pages, same-origin workspace links, typed assets and separate content policy")
 
 
 if __name__ == "__main__":

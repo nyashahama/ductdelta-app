@@ -1,0 +1,58 @@
+/* ScrewFast's filled primary buttons share the workspace accent in both themes. */
+.bg-orange-400 {
+  --color-orange-400: var(--product-workspace-primary);
+  --color-orange-500: color-mix(in oklab, var(--product-workspace-primary) 75%, transparent);
+  color: var(--product-workspace-neutral-900);
+}
+
+/* Apply the workspace palette to the ScrewFast utilities in dark mode. */
+html.dark {
+  color-scheme: dark;
+  --font-sans: var(--product-workspace-font);
+  --color-neutral-200: var(--product-workspace-neutral-200);
+  --color-neutral-300: var(--product-workspace-neutral-300);
+  --color-neutral-400: var(--product-workspace-neutral-400);
+  --color-neutral-500: var(--product-workspace-neutral-500);
+  --color-neutral-600: var(--product-workspace-neutral-600);
+  --color-neutral-700: var(--product-workspace-neutral-700);
+  --color-neutral-800: var(--product-workspace-neutral-800);
+  --color-neutral-900: var(--product-workspace-neutral-900);
+  --color-orange-300: var(--product-workspace-primary);
+  --color-orange-400: var(--product-workspace-primary);
+  --color-yellow-400: var(--product-workspace-primary);
+}
+
+html.dark body {
+  background-color: var(--product-workspace-neutral-900);
+  color: var(--product-workspace-neutral-200);
+}
+
+html.dark :is(h1, h2, h3, h4) {
+  color: var(--color-white);
+}
+
+html.dark :is(
+  header nav,
+  footer,
+  [class~="dark:bg-zinc-700"],
+  [class~="dark:bg-white/[.05]"],
+  [class~="dark:bg-white/[.075]"]
+) {
+  background-color: var(--product-workspace-neutral-800);
+}
+
+html.dark header nav {
+  border-color: var(--product-workspace-neutral-800);
+}
+
+html.dark [class~="dark:hover:bg-zinc-600"]:hover {
+  background-color: var(--product-workspace-neutral-700);
+}
+
+html.dark :is([stroke="#ea580c"], [stroke="#fbbf24"]) {
+  stroke: var(--product-workspace-primary);
+}
+
+html.dark :is([fill="#ea580c"], [fill="#fbbf24"]) {
+  fill: var(--product-workspace-primary);
+}

@@ -8,12 +8,27 @@ const browser = await chromium.launch({ executablePath: process.env.DUCTDELTA_CH
 const errors = []
 const button = (page, name) => page.getByRole('button', { name, exact: true })
 const heading = (page, name) => page.getByRole('heading', { name, exact: true })
+const link = (page, name) => page.getByRole('link', { name, exact: true })
 const checkWidth = async (page) => assert.ok(await page.evaluate(
   () => document.documentElement.scrollWidth <= innerWidth
 ))
+const productTheme = (page) => page.evaluate(() => {
+  const body = getComputedStyle(document.body)
+  return {
+    background: body.backgroundColor,
+    font: body.fontFamily,
+    heading: getComputedStyle(document.querySelector('main h1')).color,
+    surface: getComputedStyle(document.querySelector('header nav')).backgroundColor
+  }
+})
+const actionColors = (action) => action.evaluate(async element => {
+  await Promise.all(element.getAnimations().map(animation => animation.finished))
+  const style = getComputedStyle(element)
+  return { background: style.backgroundColor, color: style.color }
+})
 
 try {
-  const desktop = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+  const desktop = await browser.newContext({ viewport: { width: 1440, height: 1000 }, colorScheme: 'light' })
   const phoneOptions = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }
   const phone = await browser.newContext(phoneOptions)
   const owner = await desktop.newPage()
@@ -23,6 +38,80 @@ try {
     page.on('pageerror', error => errors.push(String(error)))
   }
   await owner.goto(origin)
+  await heading(owner, 'Sign in to your workspace').waitFor()
+  const workspaceTheme = await owner.evaluate(() => {
+    const body = getComputedStyle(document.body)
+    const swatch = document.createElement('span')
+    swatch.style.backgroundColor = 'var(--ui-bg-elevated)'
+    document.body.append(swatch)
+    const surface = getComputedStyle(swatch).backgroundColor
+    swatch.remove()
+    return {
+      background: body.backgroundColor,
+      font: body.fontFamily,
+      heading: getComputedStyle(document.querySelector('main h1')).color,
+      surface
+    }
+  })
+  const workspaceAction = await actionColors(button(owner, 'Sign in'))
+  const policyErrors = []
+  const recordPolicyError = (message) => {
+    if (message.type() === 'error' && /content security policy/i.test(message.text())) {
+      policyErrors.push(message.text())
+    }
+  }
+  owner.on('console', recordPolicyError)
+  member.on('console', recordPolicyError)
+  await link(owner, 'About DuctDelta').click()
+  await heading(owner, 'Keep mechanical changes on record').waitFor()
+  const lightTheme = await productTheme(owner)
+  await owner.getByRole('tab', { name: /record the decision/i }).click()
+  await owner.getByRole('img', { name: /illustrative rectangular ductwork/i }).waitFor()
+  await button(owner, 'Dark Theme Toggle').click()
+  await owner.reload()
+  assert.ok(await owner.locator('html').evaluate(element => element.classList.contains('dark')))
+  for (const subpath of ['', 'workflow/', 'example/', 'faq/']) {
+    await owner.goto(origin + '/product/' + subpath)
+    assert.deepEqual(await productTheme(owner), workspaceTheme, 'Dashboard dark colors on /product/' + subpath)
+  }
+  await owner.goto(origin + '/product/')
+  assert.ok(await owner.evaluate(async () => {
+    const faces = await document.fonts.load('400 16px "Public Sans"')
+    return faces.some(face => face.status === 'loaded')
+  }), 'Marketing reuses the workspace webfont')
+  const exampleAction = link(owner, 'See a worked example')
+  assert.deepEqual(await actionColors(exampleAction), workspaceAction, 'Dashboard primary action colors in dark mode')
+  await exampleAction.hover()
+  const hoverAction = await actionColors(exampleAction)
+  assert.notEqual(hoverAction.background, workspaceAction.background, 'Primary action has a hover state')
+  await button(owner, 'Light Theme Toggle').click()
+  assert.deepEqual(await productTheme(owner), lightTheme, 'Light mode preserves its palette')
+  assert.deepEqual(await actionColors(exampleAction), workspaceAction, 'Dashboard primary action colors in light mode')
+  await exampleAction.hover()
+  assert.deepEqual(await actionColors(exampleAction), hoverAction, 'Primary action hover matches in both themes')
+  await exampleAction.click()
+  await heading(owner, 'One duct reroute').waitFor()
+  await owner.getByRole('tab', { name: 'Payment balance', exact: true }).click()
+  await heading(owner, 'R17,900.00 still due').waitFor()
+  await link(owner, 'Open workspace').first().click()
+  await heading(owner, 'Sign in to your workspace').waitFor()
+
+  await member.goto(origin + '/product/faq/')
+  await heading(member, 'Project questions').waitFor()
+  await button(member, 'How do we record a notice?').press('Enter')
+  await member.getByText(/record when the notice was sent and received/i).waitFor()
+  await button(member, 'Can one receipt cover multiple certificates?').click()
+  await member.getByText(/finance can allocate a receipt across certificates/i).waitFor()
+  assert.equal(await button(member, 'How do we record a notice?').getAttribute('aria-expanded'), 'true')
+  await button(member, 'Toggle navigation').click()
+  await member.locator('header').getByRole('link', { name: 'Workflow', exact: true }).click()
+  await heading(member, 'From site observation to closeout').waitFor()
+  await checkWidth(member)
+  member.off('console', recordPolicyError)
+  owner.off('console', recordPolicyError)
+  assert.deepEqual(policyErrors, [])
+  console.log('PASS: product interactions and the workspace transition with the production content policy')
+
   await button(owner, 'Create a company').click({ timeout: 5000 })
   await owner.getByLabel('Company name').fill('Basin Mechanical')
   await owner.getByLabel('Your name').fill('Ada Site')
@@ -91,6 +180,9 @@ try {
   await member.reload()
   await heading(member, 'Project overview').waitFor()
   await member.getByText('Net certified balance', { exact: true }).waitFor()
+  await member.goto(origin + '/product/')
+  await link(member, 'Open DuctDelta').click()
+  await heading(member, 'Project overview').waitFor()
   await button(member, 'New observation').click()
   await member.getByLabel('Observation', { exact: true }).fill('A beam blocks the duct route.')
   await button(member, 'Save observation').click()
