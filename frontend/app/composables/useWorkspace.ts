@@ -1,6 +1,6 @@
 import { ApiError, api, reportError, requestJson, type Project } from '~/utils/api'
 
-export type WorkspaceView = 'overview' | 'observations' | 'cases' | 'notice-rules' | 'company' | 'sessions'
+export type WorkspaceView = 'overview' | 'observations' | 'cases' | 'notice-rules' | 'company' | 'sessions' | 'security'
 export type Company = { id: string, name: string, role: 'admin' | 'member' }
 type Session = { name: string }
 
@@ -25,6 +25,7 @@ export function useWorkspace() {
     && requestedProject.value !== undefined && !project.value)
   const view = computed<WorkspaceView>(() => route.query.view === 'observations' || route.query.view === 'cases'
     || route.query.view === 'notice-rules' || route.query.view === 'company' || route.query.view === 'sessions'
+    || route.query.view === 'security'
     ? route.query.view
     : 'overview')
 
@@ -32,7 +33,7 @@ export function useWorkspace() {
     return {
       path: '/',
       query: {
-        project: next === 'company' || next === 'sessions' ? undefined : projectId,
+        project: next === 'company' || next === 'sessions' || next === 'security' ? undefined : projectId,
         view: next === 'overview' ? undefined : next,
         caseId: next === 'cases' ? id : undefined,
         observationId: next === 'observations' ? id : undefined

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AccountSessions from '~/components/AccountSessions.vue'
+import AccountSecurity from '~/components/AccountSecurity.vue'
 import CompanySettings from '~/components/company/CompanySettings.vue'
 import CasesWorkspace from '~/components/cases/CasesWorkspace.vue'
 import ProjectNoticeRules from '~/components/cases/ProjectNoticeRules.vue'
@@ -26,7 +27,8 @@ const title = computed(() => ({
   'cases': 'Change cases',
   'notice-rules': 'Notice rules',
   'company': 'Company settings',
-  'sessions': 'Account sessions'
+  'sessions': 'Account sessions',
+  'security': 'Account security'
 })[view.value])
 const selectedCase = computed(() => recordId(route.query.caseId))
 const selectedObservation = computed(() => recordId(route.query.observationId))
@@ -182,6 +184,7 @@ watch([() => project.value?.id, view, period, version], ([id, page], _, onCleanu
 
     <template #body>
       <AccountSessions v-if="view === 'sessions'" />
+      <AccountSecurity v-else-if="view === 'security'" />
       <CompanySettings v-else-if="view === 'company'" />
       <UAlert
         v-else-if="error"

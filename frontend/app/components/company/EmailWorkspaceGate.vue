@@ -1,16 +1,21 @@
 <script setup lang="ts">
 import { ApiError, api, requestJson } from '~/utils/api'
 import { useTimeoutFn } from '@vueuse/core'
+import CompanySignInButton from '~/components/company/CompanySignInButton.vue'
 
-const props = defineProps<{ invitation: string, savedKey?: string }>()
+const props = defineProps<{ invitation: string, savedKey?: string, recovery?: boolean }>()
 const emit = defineEmits<{ done: [], cancel: [] }>()
 const { refreshSession, signInError, sessionCheckError, restoreSession } = useWorkspace()
-type Mode = 'sign_in' | 'company' | 'upgrade'
+type Mode = 'sign_in' | 'company' | 'upgrade' | 'recover'
 type PendingChallenge = { id: string, email: string, mode: Mode, invitationDigest: string, requestedAt: number }
 const challengeStorage = 'ductdelta-pending-email-code'
 const resendInterval = 60_000
 const codeLifetime = 600_000
-const mode = ref<Mode>('sign_in')
+const mode = ref<Mode>(props.recovery ? 'recover' : 'sign_in')
+const route = useRoute()
+const ssoCompany = computed(() => typeof route.query.sso === 'string' && /^[a-f0-9-]{36}$/i.test(route.query.sso)
+  ? route.query.sso
+  : '')
 const email = ref('')
 const code = ref('')
 const company = ref('')
@@ -33,7 +38,8 @@ const title = computed(() => {
     sign_in: 'Sign in to your workspace',
     company: 'Create your company',
     invite: 'Join the company',
-    upgrade: 'Connect your email'
+    upgrade: 'Connect your email',
+    recover: 'Restore account access'
   }[purpose.value]
 })
 
@@ -79,7 +85,7 @@ onMounted(async () => {
     const saved: PendingChallenge | null = JSON.parse(stored ?? 'null')
     if (saved && typeof saved.id === 'string' && /^[0-9a-f-]{36}$/i.test(saved.id)
       && typeof saved.email === 'string' && saved.email.length <= 254
-      && (saved.mode === 'sign_in' || saved.mode === 'company' || saved.mode === 'upgrade')
+      && (saved.mode === 'sign_in' || saved.mode === 'company' || saved.mode === 'upgrade' || saved.mode === 'recover')
       && typeof saved.requestedAt === 'number' && saved.requestedAt <= Date.now()
       && saved.requestedAt + codeLifetime > Date.now()
       && saved.invitationDigest === await invitationDigest(invitation)) {
@@ -116,6 +122,11 @@ function changeEmail() {
 
 watch(() => props.invitation, () => changeMode('sign_in'))
 
+function backToSignIn() {
+  changeMode('sign_in')
+  if (props.recovery) void navigateTo({ path: '/', query: { view: 'security' } })
+}
+
 async function submit() {
   if (pending.value || sessionCheckError.value) return
   if (!challenge.value && purpose.value === 'company' && ['loading', 'unavailable'].includes(registration.value)) return
@@ -130,7 +141,8 @@ async function submit() {
         sign_in: {},
         company: { company: company.value, name: name.value, setup_code: setupCode.value.trim() || undefined },
         invite: { token: invitation },
-        upgrade: { key: legacyKey.value.trim(), token: invitation || undefined }
+        upgrade: { key: legacyKey.value.trim(), token: invitation || undefined },
+        recover: { key: legacyKey.value.trim() }
       }[intent]
       const saved = {
         id: crypto.randomUUID(), email: email.value.trim(), mode: mode.value,
@@ -167,12 +179,15 @@ async function submit() {
     }
     await refreshSession()
     if (intent === 'company') await navigateTo({ path: '/', query: { view: 'company' } }, { replace: true })
+    if (intent === 'recover') await navigateTo({ path: '/', query: { view: 'security' } }, { replace: true })
     if (invitation === props.invitation) emit('done')
   } catch (cause) {
     if (props.invitation && cause instanceof ApiError && cause.status === 404) {
       error.value = 'This invitation is unavailable. Check the invited email address or ask for a new invitation.'
     } else if (purpose.value === 'upgrade' && !challenge.value && cause instanceof ApiError && cause.status === 401) {
       error.value = 'This key is unavailable. Check your access or recovery key.'
+    } else if (purpose.value === 'recover' && !challenge.value && cause instanceof ApiError && cause.status === 401) {
+      error.value = 'This recovery code is unavailable. Use your most recently saved code.'
     } else {
       error.value = cause instanceof ApiError ? cause.message : 'Could not reach DuctDelta. Try again.'
     }
@@ -195,6 +210,19 @@ async function submit() {
       <h1 id="workspace-gate-title" class="text-2xl font-semibold text-highlighted">
         {{ title }}
       </h1>
+
+      <UAlert
+        v-if="route.query.sso_error"
+        class="mt-4"
+        color="error"
+        variant="subtle"
+        title="Company sign-in failed. Check with your company administrator."
+      />
+      <CompanySignInButton
+        v-if="ssoCompany && purpose === 'sign_in' && !challenge"
+        :company="ssoCompany"
+        class="mt-4"
+      />
 
       <UAlert
         v-if="sessionCheckError"
@@ -243,6 +271,9 @@ async function submit() {
           <p v-if="purpose === 'upgrade'" class="text-muted">
             Use your existing access or recovery key once to connect your email.
           </p>
+          <p v-if="purpose === 'recover'" class="text-muted">
+            Enter your saved recovery code and an email address you can access.
+          </p>
           <template v-if="purpose === 'company'">
             <UFormField label="Company name" name="company" required>
               <UInput
@@ -265,7 +296,7 @@ async function submit() {
               />
             </UFormField>
           </template>
-          <UFormField label="Email address" name="email" required>
+          <UFormField :label="purpose === 'recover' ? 'New email address' : 'Email address'" name="email" required>
             <UInput
               v-model="email"
               type="email"
@@ -293,8 +324,8 @@ async function submit() {
             />
           </UFormField>
           <UFormField
-            v-if="purpose === 'upgrade'"
-            label="Access or recovery key"
+            v-if="purpose === 'upgrade' || purpose === 'recover'"
+            :label="purpose === 'recover' ? 'Saved recovery code' : 'Access or recovery key'"
             name="existing-key"
             required
           >
@@ -391,6 +422,13 @@ async function submit() {
             @click="changeMode('upgrade')"
           />
           <UButton
+            label="Recover account"
+            color="neutral"
+            variant="link"
+            :disabled="pending"
+            @click="changeMode('recover')"
+          />
+          <UButton
             label="About DuctDelta"
             color="neutral"
             variant="link"
@@ -404,7 +442,7 @@ async function submit() {
           color="neutral"
           variant="link"
           :disabled="pending"
-          @click="changeMode('sign_in')"
+          @click="backToSignIn"
         />
       </div>
     </UCard>

@@ -92,6 +92,8 @@ jobs:
           python3 scripts/check_company_access_history.py
           python3 scripts/check_invitation_email.py
           python3 scripts/check_email_sign_in.py
+          python3 scripts/check_account_security.py
+          python3 scripts/check_company_sign_in.py
           python3 scripts/check_activity_email.py
           python3 scripts/check_company_registration.py
           python3 scripts/check_request_trace.py

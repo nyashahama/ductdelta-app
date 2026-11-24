@@ -16,7 +16,10 @@ const pendingKeys = ref<string[]>([])
 const keyStorage = 'ductdelta-pending-keys'
 const emailSignIn = ref<boolean>()
 const policyError = ref(false)
-const needsGate = computed(() => !session.value || Boolean(invitation.value)
+const recovery = computed(() => emailSignIn.value === true && route.query.recover === '1' && !invitation.value)
+const ssoSignIn = computed(() => emailSignIn.value === true && typeof route.query.sso === 'string'
+  && /^[a-f0-9-]{36}$/i.test(route.query.sso) && !invitation.value)
+const needsGate = computed(() => !session.value || Boolean(invitation.value) || recovery.value || ssoSignIn.value
   || (emailSignIn.value !== true && pendingKeys.value.length > 0))
 
 async function loadSignInPolicy() {
@@ -62,6 +65,9 @@ function clearInvitation() {
 function entered() {
   clearInvitation()
   storeKeys([])
+  if (recovery.value || ssoSignIn.value || route.query.sso_error) {
+    void router.replace(target('security'))
+  }
 }
 
 const links = computed<NavigationMenuItem[]>(() => ([
@@ -83,7 +89,7 @@ const groups = computed(() => [{
 
 async function selectProject(id: string) {
   open.value = false
-  await navigateTo(target(view.value === 'company' || view.value === 'sessions' ? 'overview' : view.value, id))
+  await navigateTo(target(['company', 'sessions', 'security'].includes(view.value) ? 'overview' : view.value, id))
 }
 
 function readInvitation(hash: string) {
@@ -144,6 +150,7 @@ onMounted(async () => {
     v-else-if="needsGate && emailSignIn"
     :invitation="invitation"
     :saved-key="pendingKeys[0]"
+    :recovery="recovery"
     @done="entered"
     @cancel="clearInvitation"
   />

@@ -19,8 +19,8 @@ async function page(options) {
   return tab
 }
 
-async function enterEmail(tab, email, { reload = false, interrupted = false } = {}) {
-  await field(tab, 'Email address').fill(email)
+async function enterEmail(tab, email, { reload = false, interrupted = false, emailLabel = 'Email address' } = {}) {
+  await field(tab, emailLabel).fill(email)
   const codeUrl = origin + '/api/account/email-codes'
   const captured = Promise.withResolvers()
   if (interrupted) {
@@ -97,8 +97,21 @@ try {
   await field(existing, 'Access or recovery key').fill(legacy)
   await enterEmail(existing, 'browser-legacy@example.test')
   await heading(existing, 'Project overview').waitFor()
+
+  await owner.goto(origin + '/?view=security')
+  await heading(owner, 'Account security').waitFor()
+  await button(owner, 'Generate recovery code').click()
+  const saved = await field(owner, 'Account recovery code').inputValue()
+  assert.match(saved, /^[0-9a-f]{64}$/)
+  await owner.getByRole('link', { name: 'Change sign-in email', exact: true }).click()
+  await heading(owner, 'Restore account access').waitFor()
+  await field(owner, 'Saved recovery code').fill(saved)
+  await enterEmail(owner, 'browser-new-owner@example.test', { emailLabel: 'New email address', reload: true })
+  await heading(owner, 'Account security').waitFor()
+  await owner.getByText('browser-new-owner@example.test', { exact: true }).waitFor()
+  await button(owner, 'Generate recovery code').waitFor()
   assert.deepEqual(errors, [])
-  console.log('PASS: Chromium verifies company setup, mobile invitation after reload, sign-in after an interrupted response and existing-account migration')
+  console.log('PASS: Chromium verifies setup, mobile invitation, interrupted sign-in, account migration and verified email recovery')
 } finally {
   input.close()
   await browser.close()

@@ -56,6 +56,8 @@ Users enter their email and an eight-digit code. Each code expires after 10 minu
 
 On first sign-in after the upgrade, existing users choose **Use an existing key** and verify their email with their current access or recovery key. This preserves their account and memberships, retires both keys, and ends earlier sessions. If a connection drops after setup or invitation acceptance, request a sign-in code for the same address to recover the account.
 
+After signing in, open **Account security** and generate a recovery code within 10 minutes. Save it outside the sign-in mailbox. A replacement invalidates the previously saved code. To change an address, choose **Change sign-in email** in Account security or **Recover account** on the sign-in screen. Enter the saved code and confirm the new email with a one-time code. DuctDelta keeps the account and memberships, consumes the recovery code, ends earlier sessions, and sends a notice to the previous address. Generate a replacement after changing the address. A linked work account can still sign in through Entra if the mailbox is lost. Keep at least one recovery method available.
+
 Before deploying the web image on HTTPS, apply migration 0021 and configure `DUCTDELTA_RESEND_API_KEY` with sending access, `DUCTDELTA_RESEND_FROM` on a verified domain, and a persistent `DUCTDELTA_INVITE_SIGNING_KEY` of 64 random hex digits. Changing the signing key invalidates pending codes and prevents already queued invitation messages from being sent. Delivered invitation links remain valid until use, cancellation, or expiry.
 
 Once users enroll with email, use an email-capable build for subsequent deployments, including rollbacks.
@@ -63,6 +65,29 @@ Once users enroll with email, use an email-capable build for subsequent deployme
 Company creation on a public HTTPS origin requires `DUCTDELTA_COMPANY_SETUP_CODE`, a separate 32-byte random value encoded as 64 hex digits. Share the code privately with the people authorized to create companies. Invited team members can join with their own links.
 
 Run `python3 scripts/check_email_sign_in.py` to verify delivery, enrollment, sign-in, migration and reuse against a loopback provider. Add `--browser` with a built frontend, Chromium and `DUCTDELTA_PLAYWRIGHT_MODULE` set to run the browser flow. The offline demo uses keys on loopback. Set `DUCTDELTA_EMAIL_SIGN_IN=1` with a loopback mail provider to exercise email sign-in locally.
+
+### Microsoft Entra sign-in and company MFA
+
+Register a multitenant web application for Microsoft Entra organizational accounts. Add the exact deployed HTTPS URL ending in `/api/account/sso/callback` as a Web redirect URI. Store the application ID in `DUCTDELTA_ENTRA_CLIENT_ID` and its credential in `DUCTDELTA_ENTRA_CLIENT_SECRET`. Apply migration 0022 before configuring a company. The browser signs in through Microsoft using authorization code flow with PKCE. DuctDelta verifies the signed ID token and looks up the linked tenant and user object. Each user first needs an existing DuctDelta company membership and verified sign-in email.
+
+A deployment operator with `ductdelta_company_bootstrap` can configure the company's tenant and link each DuctDelta actor to the verified Entra directory object ID. Look up the IDs through the authorized company roster and tenant directory before linking. Replace the placeholders in these PostgreSQL commands.
+
+```sql
+SELECT ductdelta.configure_company_entra('COMPANY_UUID', 'TENANT_UUID');
+SELECT ductdelta.link_company_entra('COMPANY_UUID', 'ACTOR_UUID', 'ENTRA_USER_OBJECT_UUID');
+```
+
+Share `/?sso=COMPANY_UUID` on the workspace origin. Signed-in members can also choose **Sign in with Microsoft** in Account security. Verify sign-in with a linked member before enabling enforcement. Call `ductdelta.unlink_company_entra(company_uuid, actor_uuid)` to remove an association and revoke its work-account sessions.
+
+For stronger admin and finance sign-in, configure an enabled Entra Conditional Access authentication context that requires MFA or a phishing-resistant authentication strength for the protected users. Configure `acrs` as an optional ID token claim and test that an account outside the policy cannot obtain the required context for privileged access. Link every current company administrator and finance member, then store the matching context in DuctDelta.
+
+```sql
+SELECT ductdelta.configure_company_entra('COMPANY_UUID', 'TENANT_UUID', 'c1');
+```
+
+A company with enforcement enabled requires a work-account session containing that company's verified context for admin and finance project routes. Add a work-account link for newly granted administrators and finance members before they use those features. Each company requires its own work-account session.
+
+Run `python3 scripts/check_account_security.py` for email change and recovery. Run `python3 scripts/check_company_sign_in.py` against signed loopback Entra tokens. Add `--browser` and configure Chromium and Playwright as above for the browser redirect check. Verify each real Entra tenant's policy and Resend delivery in staging before rollout.
 
 ### Invitation email
 
