@@ -138,6 +138,46 @@ def mail_environment(url):
     }
 
 
+def verify_account_limit(server):
+    first, admin = company(server, "First workspace")
+    first_id = first.rsplit("/", 1)[-1]
+    second_id = uuid4()
+    second = f"/api/companies/{second_id}"
+    actor = server.sql(f"SELECT actor_id FROM ductdelta.organization_member WHERE organization_id = '{first_id}'")
+    server.sql(f"""
+        INSERT INTO ductdelta.organization (id, name) VALUES ('{second_id}', 'Second workspace');
+        INSERT INTO ductdelta.organization_member VALUES ('{second_id}', '{actor}', 'admin');
+        WITH sent AS (
+            INSERT INTO ductdelta.company_invitation (id, organization_id, inviter_id, name, role, token_digest)
+            SELECT gen_random_uuid(), '{first_id}', '{actor}', 'Earlier member', 'member',
+                   sha256(uuid_send(gen_random_uuid()))
+            FROM generate_series(1, 28) RETURNING id
+        )
+        INSERT INTO ductdelta.invitation_email
+            (invitation_id, organization_id, requested_by, operation_id, recipient, sender, origin, company_name, accepted_id)
+        SELECT id, '{first_id}', '{actor}', gen_random_uuid(), id || '@example.test', 'invites@example.test',
+               '{server.origin}', 'First workspace', gen_random_uuid()
+        FROM sent;
+    """)
+    payload = draft("one-more@example.test")
+    sent, _ = server.request(second + "/invitations", "POST", payload, admin, expected=202)
+
+    def send(path, address):
+        try:
+            created, _ = server.request(path + "/invitations", "POST", draft(address), admin, expected=202)
+            return created["id"]
+        except AssertionError as error:
+            assert error.args[0][2] == 429, error
+            return None
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(send, [first, second], ["first-final@example.test", "second-final@example.test"]))
+    assert sum(value is not None for value in outcomes) == 1
+    assert server.sql(f"SELECT count(*) FROM ductdelta.company_invitation WHERE inviter_id = '{actor}'") == "30"
+    assert server.request(second + "/invitations", "POST", payload, admin, expected=202)[0]["id"] == sent["id"]
+    print("PASS: simultaneous invitations across companies share one sender allowance and retries keep their existing invitation")
+
+
 def browser_check():
     if not os.environ.get("DUCTDELTA_PLAYWRIGHT_MODULE"):
         raise SystemExit("Set DUCTDELTA_PLAYWRIGHT_MODULE to the path to playwright/index.mjs.")
@@ -148,7 +188,8 @@ def browser_check():
     setup_code = secrets.token_hex(32)
     with provider() as (url, requests, _), workspace(
         seed=False, frontend=frontend,
-        service_env={**mail_environment(url), "DUCTDELTA_COMPANY_SETUP_CODE": setup_code},
+        service_env={**mail_environment(url), "DUCTDELTA_COMPANY_REGISTRATION": "code",
+                     "DUCTDELTA_COMPANY_SETUP_CODE": setup_code},
     ) as server:
         environment = {**os.environ, "DD_INVITE_ORIGIN": server.origin, "DD_COMPANY_SETUP_CODE": setup_code}
         subprocess.run(["node", "scripts/check_invitation_email.mjs", "create"], cwd=ROOT, env=environment, check=True)
@@ -167,6 +208,7 @@ def main():
         return
     with provider() as (url, requests, release), workspace(seed=False, service_env=mail_environment(url)) as server:
         verify(server, requests, release)
+        verify_account_limit(server)
     with workspace(seed=False) as server:
         path, admin = company(server, "Manual invitations")
         base = f"{path}/invitations"

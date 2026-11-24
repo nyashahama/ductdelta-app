@@ -16,7 +16,6 @@ fn server_command(port: u16, database: &str) -> Command {
         .env("PORT", port.to_string())
         .env("DUCTDELTA_ORIGIN", ORIGIN)
         .env("DUCTDELTA_DATABASE_URL", database)
-        .env("DUCTDELTA_COMPANY_SETUP_CODE", "f".repeat(64))
         .env("DUCTDELTA_RESEND_API_KEY", "test-only")
         .env("DUCTDELTA_RESEND_FROM", "login@example.test")
         .env("DUCTDELTA_INVITE_SIGNING_KEY", "e".repeat(64));

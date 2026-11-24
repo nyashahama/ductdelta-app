@@ -53,14 +53,14 @@ def allow_resend(server, email):
 def check(server, messages):
     assert server.request("/api/account/email-sign-in")[0] == {"enabled": True}
     registration = {"email": EMAIL, "purpose": "company", "company": "Test Mechanical", "name": "Test Owner"}
-    server.request(CODES, "POST", registration, expected=403)
+    assert server.request("/api/company-registration")[0] == {"setup_code_required": False}
     identifier = str(uuid4())
     challenge = request_code(server, EMAIL, "company", company="Test Mechanical", name="Test Owner",
-                             setup_code=SETUP, id=identifier)
+                             id=identifier)
     assert challenge == identifier
     assert request_code(server, EMAIL, "company", company="Test Mechanical", name="Test Owner",
-                        setup_code=SETUP, id=identifier) == identifier
-    server.request(CODES, "POST", {**registration, "id": identifier, "company": "Changed", "setup_code": SETUP},
+                        id=identifier) == identifier
+    server.request(CODES, "POST", {**registration, "id": identifier, "company": "Changed"},
                    expected=409)
     code = code_for(messages, challenge, EMAIL)
     assert server.sql("SELECT count(*) FROM ductdelta.organization WHERE name = 'Test Mechanical'") == "0"
@@ -71,7 +71,7 @@ def check(server, messages):
     assert len(companies) == 1 and companies[0]["name"] == "Test Mechanical"
     company = f"/api/companies/{companies[0]['id']}"
     server.request("/api/companies", "POST", {
-        "company": "Legacy", "name": "No email", "recovery_key": secrets.token_hex(32), "setup_code": SETUP,
+        "company": "Legacy", "name": "No email", "recovery_key": secrets.token_hex(32),
     }, expected=403)
     allow_resend(server, EMAIL)
     challenge = request_code(server, "  OWNER@Example.test ")
@@ -105,7 +105,7 @@ def check(server, messages):
     print("PASS: email is verified before setup, sign-in is private, and concurrent replay creates one session")
 
     retry_email = "first@example.test"
-    retry = request_code(server, retry_email, "company", company="Retry Mechanical", name="Retry Owner", setup_code=SETUP)
+    retry = request_code(server, retry_email, "company", company="Retry Mechanical", name="Retry Owner")
     delivery = f"email-code/{retry}/"
     for _ in range(100):
         matching = [(identifier, body) for identifier, body in list(messages) if identifier.startswith(delivery)]
@@ -212,7 +212,7 @@ def check(server, messages):
 
 def browser_check(server, messages):
     environment = {
-        **os.environ, "DD_EMAIL_ORIGIN": server.origin, "DD_EMAIL_SETUP": SETUP,
+        **os.environ, "DD_EMAIL_ORIGIN": server.origin,
         "DD_EMAIL_LEGACY": server.key(REPORTER, "Browser reporter"),
     }
     with subprocess.Popen(

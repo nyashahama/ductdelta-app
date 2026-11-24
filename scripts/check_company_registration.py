@@ -26,5 +26,9 @@ if __name__ == "__main__":
         verify(server, None)
     code = secrets.token_hex(32)
     with workspace(seed=False, service_env={"DUCTDELTA_COMPANY_SETUP_CODE": code}) as server:
+        verify(server, None)
+    with workspace(seed=False, service_env={
+        "DUCTDELTA_COMPANY_REGISTRATION": "code", "DUCTDELTA_COMPANY_SETUP_CODE": code,
+    }) as server:
         verify(server, code)
     print("PASS: controlled and open company setup; a setup code never applies to an invited team member")

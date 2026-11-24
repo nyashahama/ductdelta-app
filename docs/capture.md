@@ -62,7 +62,7 @@ Before deploying the web image on HTTPS, apply migration 0021 and configure `DUC
 
 Once users enroll with email, use an email-capable build for subsequent deployments, including rollbacks.
 
-Company creation on a public HTTPS origin requires `DUCTDELTA_COMPANY_SETUP_CODE`, a separate 32-byte random value encoded as 64 hex digits. Share the code privately with the people authorized to create companies. Invited team members can join with their own links.
+Company creation is self-service by default. The founder enters their company name, name and email address, then verifies the email to create the company. For a restricted deployment, set `DUCTDELTA_COMPANY_REGISTRATION=code` and set `DUCTDELTA_COMPANY_SETUP_CODE` to 64 random hex digits. A setup-code secret left over from an earlier deployment only applies when code mode is selected. Invited team members join with their own links.
 
 Run `python3 scripts/check_email_sign_in.py` to verify delivery, enrollment, sign-in, migration and reuse against a loopback provider. Add `--browser` with a built frontend, Chromium and `DUCTDELTA_PLAYWRIGHT_MODULE` set to run the browser flow. The offline demo uses keys on loopback. Set `DUCTDELTA_EMAIL_SIGN_IN=1` with a loopback mail provider to exercise email sign-in locally.
 
@@ -91,6 +91,8 @@ Run `python3 scripts/check_account_security.py` for email change and recovery. R
 
 ### Invitation email
 
+Each company and each sender account can queue up to 30 email invitations in a rolling hour. A sender's allowance applies across all their companies. Apply migration 0023 before deploying the self-service signup release.
+
 Disable open and click tracking on the sending domain. The message contains the private link. Restrict access to the sender account and its logs. The app distinguishes a queued email from one accepted by Resend. Inbox delivery can be checked through Resend. If a message needs attention, cancel it and create a new invitation or private link.
 
 Set `DUCTDELTA_EMAIL_REPLY_TO` to the monitored support inbox for invitation replies. Invitations and operator activity alerts use the shared DuctDelta layout and include a plain-text body.
@@ -102,7 +104,7 @@ Run `python3 scripts/check_invitation_email.py` for retry, isolation, and one-ti
 Run the web and PostgreSQL 18 containers in the same Railway environment and region. Use a temporary Railway domain for staging and `https://ductdelta.com` as the production origin. Give each environment its own database volume and secrets.
 
 1. Build the private database service using `deploy/postgres.Dockerfile` at the repository root. Mount a volume at `/var/lib/postgresql`. Set `POSTGRES_PASSWORD` and `DUCTDELTA_APP_PASSWORD` to different randomly generated 64-digit hex values. The first initialization applies migrations and creates the restricted `ductdelta_app` login. Use `postgres` as the database administrator and `ductdelta` as the database name.
-2. Build the web service from the root `Dockerfile`. Set `DUCTDELTA_DATABASE_URL` to `postgresql://ductdelta_app:PASSWORD@HOST:5432/ductdelta` using references to the database service's `DUCTDELTA_APP_PASSWORD` and `RAILWAY_PRIVATE_DOMAIN`. Set `DUCTDELTA_ORIGIN` to the exact HTTPS origin and `DUCTDELTA_COMPANY_SETUP_CODE` to a random 64-digit hex value. Use port 8080 and `/healthz` for the deployment health check. The check requires the migrated schema and the runtime role.
+2. Build the web service from the root `Dockerfile`. Set `DUCTDELTA_DATABASE_URL` to `postgresql://ductdelta_app:PASSWORD@HOST:5432/ductdelta` using references to the database service's `DUCTDELTA_APP_PASSWORD` and `RAILWAY_PRIVATE_DOMAIN`. Set `DUCTDELTA_ORIGIN` to the exact HTTPS origin. Use port 8080 and `/healthz` for the deployment health check. The check requires the migrated schema and the runtime role.
 3. Configure the [Resend mailer](#email-sign-in) in each environment with a sending-only key, a verified sender such as `DuctDelta <invites@notify.ductdelta.com>`, and a stable invitation signing key. Keep tracking off. Verify delivery by completing sign-in and accepting a test invitation in the browser.
 
 For later migrations, back up the database and deploy the updated database image first. On an existing volume, the image applies pending migrations over the local socket before accepting network connections. If a migration fails, startup stops. After correcting the failure, restart the database service to retry. Restore a backup in a disposable environment before admitting live customer records.

@@ -80,7 +80,7 @@ impl From<Error> for Rejection {
             ),
             Some("DD004") => Self(
                 StatusCode::TOO_MANY_REQUESTS,
-                "This company sent too many invitations. Try again later.",
+                "The company or sender reached the email invitation limit. Try again later.",
             ),
             Some("DD005") => Self(
                 StatusCode::CONFLICT,
@@ -210,16 +210,17 @@ pub(crate) fn serve() -> Result<(), &'static str> {
     // Keep a pool owner on this thread so the synchronous clients close outside
     // the async runtime.
     let database = Arc::new(PostgresPool::new(database, 16));
-    let company_setup_code = env::var_os("DUCTDELTA_COMPANY_SETUP_CODE")
-        .map(|value| {
-            value
-                .into_string()
+    let company_setup_code = match env::var("DUCTDELTA_COMPANY_REGISTRATION").as_deref() {
+        Ok("open") | Err(env::VarError::NotPresent) => None,
+        Ok("code") => Some(
+            env::var("DUCTDELTA_COMPANY_SETUP_CODE")
                 .ok()
                 .filter(|value| valid_key(value))
                 .map(|value| key_digest(&value))
-                .ok_or("Set DUCTDELTA_COMPANY_SETUP_CODE to a random value with 64 hex digits.")
-        })
-        .transpose()?;
+                .ok_or("Set DUCTDELTA_COMPANY_SETUP_CODE to a random value with 64 hex digits.")?,
+        ),
+        _ => return Err("Set DUCTDELTA_COMPANY_REGISTRATION to open or code."),
+    };
     let invitation_mailer = InvitationMailer::from_env(&origin, secure)?.map(Arc::new);
     let entra = Entra::from_env(&origin, secure)?;
     let email_sign_in = match env::var("DUCTDELTA_EMAIL_SIGN_IN").as_deref() {
@@ -229,14 +230,6 @@ pub(crate) fn serve() -> Result<(), &'static str> {
     };
     if email_sign_in && invitation_mailer.is_none() {
         return Err("Configure the Resend mailer before enabling email sign-in.");
-    }
-    if company_setup_code.is_none() {
-        if railway {
-            return Err("Set DUCTDELTA_COMPANY_SETUP_CODE for the Railway deployment.");
-        }
-        if secure {
-            return Err("Set DUCTDELTA_COMPANY_SETUP_CODE before enabling company registration.");
-        }
     }
     let workspace = Workspace {
         database: Arc::clone(&database),
@@ -354,6 +347,7 @@ async fn health(State(workspace): State<Workspace>) -> StatusCode {
                         AND has_function_privilege(
                             'ductdelta.web_entra_login(uuid,uuid,uuid,text,bytea,integer)', 'EXECUTE')
                         AND ($1 OR NOT ductdelta.web_entra_configured())
+                        AND to_regprocedure('ductdelta.limit_email_invites_per_account()') IS NOT NULL
                      FROM pg_catalog.pg_roles WHERE rolname = current_user",
                     &[&entra_available],
                 )
