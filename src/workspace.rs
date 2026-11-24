@@ -32,6 +32,7 @@ pub(crate) struct Workspace {
     secure: bool,
     railway: bool,
     invitation_mailer: Option<Arc<InvitationMailer>>,
+    email_sign_in: bool,
     company_setup_code: Option<Vec<u8>>,
 }
 
@@ -39,6 +40,10 @@ pub(crate) struct Rejection(StatusCode, &'static str);
 pub(crate) type Reply<T> = Result<T, Rejection>;
 
 impl Rejection {
+    pub(crate) const fn unauthorized(message: &'static str) -> Self {
+        Self(StatusCode::UNAUTHORIZED, message)
+    }
+
     pub(crate) const fn invalid(message: &'static str) -> Self {
         Self(StatusCode::UNPROCESSABLE_ENTITY, message)
     }
@@ -102,6 +107,19 @@ impl From<Error> for Rejection {
 }
 
 impl Workspace {
+    pub(crate) fn email_sign_in(&self) -> bool {
+        self.email_sign_in
+    }
+
+    pub(crate) fn require_legacy_sign_in(&self) -> Reply<()> {
+        if self.email_sign_in {
+            return Err(Rejection::forbidden(
+                "Continue with an emailed sign-in code.",
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn invitation_mailer(&self) -> Option<&InvitationMailer> {
         self.invitation_mailer.as_deref()
     }
@@ -189,12 +207,20 @@ pub(crate) fn serve() -> Result<(), &'static str> {
         })
         .transpose()?;
     let invitation_mailer = InvitationMailer::from_env(&origin, secure)?.map(Arc::new);
+    let email_sign_in = match env::var("DUCTDELTA_EMAIL_SIGN_IN").as_deref() {
+        Ok("1") => true,
+        Err(env::VarError::NotPresent) => secure,
+        _ => return Err("Set DUCTDELTA_EMAIL_SIGN_IN to 1 or omit it."),
+    };
+    if email_sign_in && invitation_mailer.is_none() {
+        return Err("Configure the Resend mailer before enabling email sign-in.");
+    }
     if company_setup_code.is_none() {
         if railway {
             return Err("Set DUCTDELTA_COMPANY_SETUP_CODE for the Railway deployment.");
         }
-        if secure && invitation_mailer.is_some() {
-            return Err("Set DUCTDELTA_COMPANY_SETUP_CODE before enabling invitation email.");
+        if secure {
+            return Err("Set DUCTDELTA_COMPANY_SETUP_CODE before enabling company registration.");
         }
     }
     let workspace = Workspace {
@@ -204,6 +230,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
         secure,
         railway,
         invitation_mailer,
+        email_sign_in,
         company_setup_code,
     };
     let runtime = runtime::Builder::new_multi_thread()
@@ -212,6 +239,13 @@ pub(crate) fn serve() -> Result<(), &'static str> {
         .map_err(|_| "Could not start the web runtime.")?;
     runtime.block_on(async move {
         if let Some(mailer) = workspace.invitation_mailer.clone() {
+            if workspace.email_sign_in {
+                let code_mailer = Arc::clone(&mailer);
+                let code_workspace = workspace.clone();
+                tokio::spawn(async move {
+                    crate::email_sign_in::deliver_queued(&code_mailer, &code_workspace).await
+                });
+            }
             let activity_mailer = Arc::clone(&mailer);
             let activity_workspace = workspace.clone();
             tokio::spawn(async move {
@@ -239,6 +273,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
             .merge(crate::account_sessions::routes())
             .merge(crate::company_setup::routes())
             .merge(crate::company_team::routes())
+            .merge(crate::email_sign_in::routes())
             .merge(crate::company_access_history::routes())
             .merge(crate::cases::routes())
             .merge(crate::notice_rules::routes())
@@ -295,6 +330,9 @@ async fn health(State(workspace): State<Workspace>) -> StatusCode {
                         AND has_function_privilege('ductdelta.claim_activity_email()', 'EXECUTE')
                         AND has_function_privilege(
                             'ductdelta.finish_activity_email(uuid,integer,uuid,integer)', 'EXECUTE')
+                        AND has_function_privilege('ductdelta.claim_email_code()', 'EXECUTE')
+                        AND has_function_privilege(
+                            'ductdelta.web_verify_email_code(uuid,bytea,bytea)', 'EXECUTE')
                      FROM pg_catalog.pg_roles WHERE rolname = current_user",
                     &[],
                 )
@@ -389,6 +427,7 @@ struct Login {
 }
 
 async fn sign_in(State(workspace): State<Workspace>, Json(input): Json<Login>) -> Reply<Response> {
+    workspace.require_legacy_sign_in()?;
     if !valid_key(&input.key) {
         return Err(Rejection(
             StatusCode::UNAUTHORIZED,
@@ -574,12 +613,16 @@ pub(crate) fn issue_key(
         return Err("Use a nonblank display name of at most 120 characters.");
     }
     let key = random_key();
-    database.execute(
+    let changed = database.execute(
         "INSERT INTO ductdelta.web_access_key (actor_id, display_name, key_digest, expires_at)
          VALUES ($1, $2, $3, statement_timestamp() + interval '30 days')
          ON CONFLICT (actor_id) DO UPDATE SET
-             display_name = excluded.display_name, key_digest = excluded.key_digest, expires_at = excluded.expires_at",
+             display_name = excluded.display_name, key_digest = excluded.key_digest, expires_at = excluded.expires_at
+         WHERE ductdelta.web_access_key.email IS NULL",
         &[&actor, &name, &key_digest(&key)],
     ).map_err(|_| "Could not issue the key. Use a migration administrator and an existing actor.")?;
+    if changed == 0 {
+        return Err("This account uses email sign-in.");
+    }
     Ok(key)
 }

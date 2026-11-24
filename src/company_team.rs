@@ -175,6 +175,7 @@ async fn accept(
     headers: HeaderMap,
     Json(input): Json<Accept>,
 ) -> Reply<Response> {
+    workspace.require_legacy_sign_in()?;
     if !workspace::valid_key(&input.token) {
         return Err(Rejection::invalid("The invitation code is invalid."));
     }

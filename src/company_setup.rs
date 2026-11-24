@@ -118,6 +118,7 @@ async fn register(
     State(workspace): State<Workspace>,
     Json(draft): Json<CompanyDraft>,
 ) -> Reply<Response> {
+    workspace.require_legacy_sign_in()?;
     workspace.check_company_setup_code(draft.setup_code.as_deref())?;
     let company = checked_name(&draft.company)?.to_owned();
     let name = checked_name(&draft.name)?.to_owned();
@@ -146,6 +147,7 @@ async fn recover(
     State(workspace): State<Workspace>,
     Json(input): Json<RecoveryRequest>,
 ) -> Reply<Response> {
+    workspace.require_legacy_sign_in()?;
     if !workspace::valid_key(&input.recovery_key) {
         return Err(Rejection::invalid("Enter a valid recovery key."));
     }

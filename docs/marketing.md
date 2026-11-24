@@ -6,7 +6,7 @@
 | `/product/workflow/` | Workflow and the first project review |
 | `/product/example/` | Fictional change CC-014 and its payment balance |
 | `/product/faq/` | Site records, direction, certification and payment |
-| `/` | Workspace, company setup and access-key sign-in |
+| `/` | Workspace, company setup and email sign-in |
 
 The approved static export is under `frontend/public/product`. It uses components and styles from [ScrewFast at d95d027](https://github.com/mearashadowfax/ScrewFast/tree/d95d0272b85984193f838bb258ba91599753c1b3). The images illustrate the fictional case. The export includes [ScrewFast and third-party notices](../frontend/public/product/licenses.txt).
 
@@ -24,4 +24,4 @@ python3 scripts/check_frontend.py
 DUCTDELTA_PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs python3 scripts/check_browser_setup.py
 ```
 
-Both Python checks start the Rust server against disposable PostgreSQL and test the built files. The browser check follows the marketing pages to the workspace, exercises the marketing controls with the server's content policy, then tests synthetic company setup, invitations, access-key sign-in and the signed-in dashboard. Set `DUCTDELTA_CHROME` if Chrome is installed away from `/usr/bin/google-chrome`.
+Both Python checks start the Rust server against disposable PostgreSQL and test the built files. The browser check follows the marketing pages to the workspace, exercises the marketing controls with the server's content policy, then tests company setup, invitations and the signed-in dashboard in the offline demo. See [Email sign-in](capture.md#email-sign-in) for the browser check with a loopback mail provider. Set `DUCTDELTA_CHROME` if Chrome is installed away from `/usr/bin/google-chrome`.
