@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use axum::extract::State;
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::{Json, Router, routing};
 use serde::Deserialize;
@@ -21,6 +21,41 @@ pub(crate) fn routes() -> Router<Workspace> {
         .route("/api/account/email-sign-in", routing::get(policy))
         .route("/api/account/email-codes", routing::post(request_code))
         .route("/api/account/email-codes/verify", routing::post(verify))
+        .route("/api/account/security", routing::get(security))
+        .route(
+            "/api/account/security/recovery-code",
+            routing::post(rotate_recovery),
+        )
+}
+
+async fn security(State(workspace): State<Workspace>, headers: HeaderMap) -> Reply<Json<Value>> {
+    let session = workspace::session(&headers)?;
+    let value = workspace
+        .query(move |database| {
+            database
+                .query_one("SELECT ductdelta.web_email_security($1)", &[&session])?
+                .try_get(0)
+        })
+        .await?;
+    Ok(Json(value))
+}
+
+async fn rotate_recovery(
+    State(workspace): State<Workspace>,
+    headers: HeaderMap,
+) -> Reply<(StatusCode, Json<Value>)> {
+    let session = workspace::session(&headers)?;
+    let code = workspace::random_key();
+    let digest = workspace::key_digest(&code);
+    workspace
+        .query(move |database| {
+            database.execute(
+                "SELECT ductdelta.web_rotate_email_recovery($1, $2)",
+                &[&session, &digest],
+            )
+        })
+        .await?;
+    Ok((StatusCode::CREATED, Json(json!({ "code": code }))))
 }
 
 async fn policy(State(workspace): State<Workspace>) -> Json<Value> {
@@ -50,6 +85,9 @@ enum Purpose {
     Upgrade {
         key: String,
         token: Option<String>,
+    },
+    Recover {
+        key: String,
     },
 }
 
@@ -108,6 +146,18 @@ async fn request_code(
         Purpose::Upgrade { .. } => {
             return Err(Rejection::invalid(
                 "Enter your existing access or recovery key.",
+            ));
+        }
+        Purpose::Recover { key } if workspace::valid_key(&key) => (
+            "recover",
+            None,
+            None,
+            None,
+            Some(workspace::key_digest(&key)),
+        ),
+        Purpose::Recover { .. } => {
+            return Err(Rejection::invalid(
+                "Enter your saved account recovery code.",
             ));
         }
     };
@@ -198,6 +248,7 @@ struct Delivery {
     email: String,
     digest: Vec<u8>,
     attempt: i32,
+    notification: bool,
 }
 
 impl Delivery {
@@ -213,6 +264,7 @@ impl Delivery {
                             email: row.try_get("email")?,
                             digest: row.try_get("digest")?,
                             attempt: row.try_get("attempt")?,
+                            notification: row.try_get("notification")?,
                         })
                     })
                     .transpose()
@@ -224,14 +276,26 @@ impl Delivery {
         let code = code_for(mailer, self.delivery_id);
         let proof = code_digest(mailer, self.id, &code);
         let mut delay = None;
-        if bool::from(proof.as_slice().ct_eq(&self.digest)) {
-            let subject = "Your DuctDelta sign-in code";
-            let message = format!("Your code is {code}.");
-            let detail = "This code expires 10 minutes after you request it. If you did not ask for a code, ignore this email.";
+        if self.notification || bool::from(proof.as_slice().ct_eq(&self.digest)) {
+            let (kind, subject, message, detail) = if self.notification {
+                (
+                    "email-notice",
+                    "Your DuctDelta sign-in email changed",
+                    "The sign-in email for your DuctDelta account was changed.".to_owned(),
+                    "If you did not make this change, contact your company administrator.",
+                )
+            } else {
+                (
+                    "email-code",
+                    "Your DuctDelta sign-in code",
+                    format!("Your code is {code}."),
+                    "This code expires 10 minutes after you request it. If you did not ask for a code, ignore this email.",
+                )
+            };
             let text = format!("{message}\n\n{detail}");
             let result = mailer
                 .send(
-                    &format!("email-code/{}/{}", self.id, self.delivery_id),
+                    &format!("{kind}/{}/{}", self.id, self.delivery_id),
                     Message {
                         sender: mailer.sender(),
                         recipient: &self.email,

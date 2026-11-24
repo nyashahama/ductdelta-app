@@ -5,12 +5,17 @@ SET LOCAL ROLE ductdelta_owner;
 ALTER TABLE ductdelta.web_access_key ADD COLUMN email text;
 CREATE UNIQUE INDEX web_access_email ON ductdelta.web_access_key (lower(email));
 
+CREATE TABLE ductdelta.email_recovery (
+    actor_id uuid PRIMARY KEY REFERENCES ductdelta.actor,
+    digest bytea NOT NULL UNIQUE CHECK (octet_length(digest) = 32)
+);
+
 CREATE TABLE ductdelta.email_code (
     id uuid PRIMARY KEY,
     delivery_id uuid NOT NULL UNIQUE,
     email text NOT NULL CHECK (char_length(email) <= 254),
     digest bytea NOT NULL CHECK (octet_length(digest) = 32),
-    purpose text NOT NULL CHECK (purpose IN ('sign_in', 'company', 'invite', 'upgrade')),
+    purpose text NOT NULL CHECK (purpose IN ('sign_in', 'company', 'invite', 'upgrade', 'recover')),
     actor_id uuid REFERENCES ductdelta.actor,
     legacy_digest bytea,
     invitation_id uuid REFERENCES ductdelta.company_invitation,
@@ -20,6 +25,7 @@ CREATE TABLE ductdelta.email_code (
     expires_at timestamptz NOT NULL DEFAULT statement_timestamp() + interval '10 minutes',
     attempts integer NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 5),
     used_at timestamptz,
+    notify_email text,
     next_send_at timestamptz DEFAULT statement_timestamp(),
     sends integer NOT NULL DEFAULT 0 CHECK (sends BETWEEN 0 AND 5)
 );
@@ -28,6 +34,36 @@ CREATE INDEX email_code_created ON ductdelta.email_code (created_at);
 CREATE INDEX email_code_mailbox ON ductdelta.email_code (lower(email), created_at);
 CREATE INDEX email_code_invitation ON ductdelta.email_code (invitation_id, created_at);
 CREATE INDEX email_code_ready ON ductdelta.email_code (next_send_at) WHERE next_send_at IS NOT NULL;
+
+CREATE FUNCTION ductdelta.web_email_security(session_digest bytea) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+    SELECT jsonb_build_object('email', access.email, 'has_recovery_code', recovery.actor_id IS NOT NULL)
+    FROM ductdelta.web_access_key AS access
+    LEFT JOIN ductdelta.email_recovery AS recovery USING (actor_id)
+    WHERE access.actor_id = ductdelta.web_actor(session_digest)
+$$;
+
+CREATE FUNCTION ductdelta.web_rotate_email_recovery(session_digest bytea, new_digest bytea) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+    account uuid := ductdelta.web_actor(session_digest);
+BEGIN
+    PERFORM FROM ductdelta.actor WHERE id = account FOR NO KEY UPDATE;
+    PERFORM ductdelta.web_actor(session_digest);
+    IF NOT EXISTS (
+        SELECT FROM ductdelta.web_session AS session
+        JOIN ductdelta.web_access_key AS access USING (actor_id)
+        WHERE session.digest = session_digest AND session.created_at > clock_timestamp() - interval '10 minutes'
+          AND access.email IS NOT NULL
+    ) THEN
+        RAISE EXCEPTION 'Fresh verified sign-in required' USING ERRCODE = 'DD008';
+    END IF;
+    INSERT INTO ductdelta.email_recovery (actor_id, digest) VALUES (account, new_digest)
+    ON CONFLICT (actor_id) DO UPDATE SET digest = excluded.digest;
+END;
+$$;
 
 CREATE OR REPLACE FUNCTION ductdelta.web_login(requested_key bytea, requested_session bytea) RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
@@ -84,6 +120,11 @@ BEGIN
             IF account IS NULL THEN
                 RAISE EXCEPTION 'Legacy credential unavailable' USING ERRCODE = '28000';
             END IF;
+        WHEN 'recover' THEN
+            SELECT actor_id INTO account FROM ductdelta.email_recovery WHERE digest = legacy_proof;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Recovery code unavailable' USING ERRCODE = '28000';
+            END IF;
         ELSE
             RAISE EXCEPTION 'Unknown email code purpose' USING ERRCODE = '22023';
     END CASE;
@@ -106,7 +147,11 @@ BEGIN
        AND invited_mailbox <> registered_mailbox THEN
         RAISE EXCEPTION 'Invitation unavailable' USING ERRCODE = '42501';
     END IF;
-    delivery_address := coalesce(invited_mailbox, registered_mailbox, address);
+    delivery_address := CASE WHEN intent = 'recover' THEN address
+                             ELSE coalesce(invited_mailbox, registered_mailbox, address) END;
+    IF intent = 'sign_in' THEN
+        SELECT key_digest INTO legacy_proof FROM ductdelta.web_access_key WHERE actor_id = account;
+    END IF;
 
     SELECT * INTO prior FROM ductdelta.email_code WHERE id = challenge_id;
     IF FOUND THEN
@@ -156,6 +201,7 @@ DECLARE
     challenge ductdelta.email_code%ROWTYPE;
     account uuid;
     registered_mailbox text;
+    previous_mailbox text;
     invite_token bytea;
     account_name text;
 BEGIN
@@ -177,14 +223,39 @@ BEGIN
     END IF;
     SELECT actor_id, email INTO account, registered_mailbox
     FROM ductdelta.web_access_key WHERE lower(email) = lower(challenge.email);
-    IF account IS NOT NULL AND registered_mailbox <> challenge.email THEN
+    IF challenge.purpose <> 'recover' AND account IS NOT NULL AND registered_mailbox <> challenge.email THEN
         RETURN false;
     END IF;
-    IF challenge.purpose = 'sign_in' AND account IS DISTINCT FROM challenge.actor_id THEN
-        RETURN false;
+    IF challenge.purpose = 'sign_in' THEN
+        PERFORM FROM ductdelta.web_access_key
+        WHERE actor_id = challenge.actor_id AND email = challenge.email AND key_digest = challenge.legacy_digest FOR SHARE;
+        IF NOT FOUND OR challenge.expires_at <= clock_timestamp() THEN
+            RETURN false;
+        END IF;
     END IF;
 
-    IF challenge.purpose = 'upgrade' THEN
+    IF challenge.purpose = 'recover' THEN
+        IF account IS NOT NULL AND account <> challenge.actor_id THEN
+            RAISE EXCEPTION 'Email already connected to an account' USING ERRCODE = 'DD001';
+        END IF;
+        account := challenge.actor_id;
+        PERFORM FROM ductdelta.actor WHERE id = account FOR NO KEY UPDATE;
+        SELECT email INTO STRICT previous_mailbox FROM ductdelta.web_access_key WHERE actor_id = account FOR UPDATE;
+        IF challenge.expires_at <= clock_timestamp() THEN
+            RETURN false;
+        END IF;
+        IF previous_mailbox = challenge.email THEN
+            RAISE EXCEPTION 'Enter a different email address' USING ERRCODE = '22023';
+        END IF;
+        DELETE FROM ductdelta.email_recovery WHERE actor_id = account AND digest = challenge.legacy_digest;
+        IF NOT FOUND THEN
+            RETURN false;
+        END IF;
+        UPDATE ductdelta.web_access_key
+        SET email = challenge.email, key_digest = sha256(uuid_send(gen_random_uuid()) || uuid_send(gen_random_uuid()))
+        WHERE actor_id = account;
+        DELETE FROM ductdelta.web_session WHERE actor_id = account;
+    ELSIF challenge.purpose = 'upgrade' THEN
         IF account IS NOT NULL THEN
             RAISE EXCEPTION 'Email already connected to an account' USING ERRCODE = 'DD001';
         END IF;
@@ -234,13 +305,18 @@ BEGIN
         PERFORM ductdelta.web_accept_invite(invite_token, session_digest, NULL, NULL, NULL);
     END IF;
 
-    UPDATE ductdelta.email_code SET used_at = clock_timestamp(), next_send_at = NULL WHERE id = challenge_id;
+    UPDATE ductdelta.email_code
+    SET used_at = clock_timestamp(), notify_email = previous_mailbox,
+        next_send_at = CASE WHEN previous_mailbox IS NOT NULL THEN clock_timestamp() END,
+        delivery_id = CASE WHEN previous_mailbox IS NULL THEN delivery_id ELSE gen_random_uuid() END,
+        sends = CASE WHEN previous_mailbox IS NULL THEN sends ELSE 0 END
+    WHERE id = challenge_id;
     RETURN true;
 END;
 $$;
 
 CREATE FUNCTION ductdelta.claim_email_code()
-RETURNS TABLE (id uuid, delivery_id uuid, email text, digest bytea, attempt integer)
+RETURNS TABLE (id uuid, delivery_id uuid, email text, digest bytea, attempt integer, notification boolean)
 LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
     WITH expired AS (
@@ -251,14 +327,15 @@ AS $$
         DELETE FROM ductdelta.email_code AS code USING expired WHERE code.id = expired.id
     ), candidate AS (
         SELECT code.id FROM ductdelta.email_code AS code
-        WHERE code.next_send_at <= statement_timestamp() AND code.expires_at > statement_timestamp()
-          AND code.sends < 5 AND code.attempts < 5
+        WHERE code.next_send_at <= statement_timestamp() AND code.sends < 5
+          AND (code.notify_email IS NOT NULL OR (code.expires_at > statement_timestamp() AND code.attempts < 5))
         ORDER BY code.next_send_at, code.id LIMIT 1 FOR UPDATE SKIP LOCKED
     )
     UPDATE ductdelta.email_code AS code
     SET next_send_at = statement_timestamp() + interval '20 seconds', sends = code.sends + 1
     FROM candidate WHERE code.id = candidate.id
-    RETURNING code.id, code.delivery_id, code.email, code.digest, code.sends
+    RETURNING code.id, code.delivery_id, coalesce(code.notify_email, code.email), code.digest,
+        code.sends, code.notify_email IS NOT NULL
 $$;
 
 CREATE FUNCTION ductdelta.finish_email_code(challenge_id uuid, sent_delivery_id uuid, send_attempt integer, delay_seconds integer)
@@ -267,14 +344,17 @@ LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
     UPDATE ductdelta.email_code
     SET next_send_at = statement_timestamp() + make_interval(secs => delay_seconds)
-    WHERE id = challenge_id AND delivery_id = sent_delivery_id AND sends = send_attempt AND used_at IS NULL
+    WHERE id = challenge_id AND delivery_id = sent_delivery_id AND sends = send_attempt
+      AND (used_at IS NULL OR notify_email IS NOT NULL)
 $$;
 
 REVOKE ALL ON FUNCTION ductdelta.legacy_email_actor(bytea),
+    ductdelta.web_email_security(bytea), ductdelta.web_rotate_email_recovery(bytea,bytea),
     ductdelta.web_request_email_code(uuid,uuid,text,bytea,text,text,text,bytea,bytea),
     ductdelta.web_verify_email_code(uuid,bytea,bytea),
     ductdelta.claim_email_code(), ductdelta.finish_email_code(uuid,uuid,integer,integer) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION ductdelta.web_request_email_code(uuid,uuid,text,bytea,text,text,text,bytea,bytea),
+GRANT EXECUTE ON FUNCTION ductdelta.web_email_security(bytea), ductdelta.web_rotate_email_recovery(bytea,bytea),
+    ductdelta.web_request_email_code(uuid,uuid,text,bytea,text,text,text,bytea,bytea),
     ductdelta.web_verify_email_code(uuid,bytea,bytea),
     ductdelta.claim_email_code(), ductdelta.finish_email_code(uuid,uuid,integer,integer) TO ductdelta_web_runtime;
 

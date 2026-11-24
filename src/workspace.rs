@@ -20,6 +20,7 @@ use tokio::runtime;
 use uuid::Uuid;
 
 use crate::DatabaseTransport;
+use crate::entra::Entra;
 use crate::invitation_mailer::InvitationMailer;
 use crate::observation;
 use crate::postgres_pool::{PostgresPool, QueryError};
@@ -33,6 +34,7 @@ pub(crate) struct Workspace {
     railway: bool,
     invitation_mailer: Option<Arc<InvitationMailer>>,
     email_sign_in: bool,
+    entra: Option<Entra>,
     company_setup_code: Option<Vec<u8>>,
 }
 
@@ -88,6 +90,14 @@ impl From<Error> for Rejection {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "The local cutoff does not exist in this time zone. Ask an administrator to publish a manual deadline rule.",
             ),
+            Some("DD008") => Self(
+                StatusCode::FORBIDDEN,
+                "Sign in again before generating a recovery code.",
+            ),
+            Some("DD007") => Self(
+                StatusCode::FORBIDDEN,
+                "Sign in with your company work account from Account security to use this feature.",
+            ),
             Some("DD001" | "40001" | "23505") => Self(
                 StatusCode::CONFLICT,
                 "The operation conflicts with a saved record.",
@@ -107,6 +117,10 @@ impl From<Error> for Rejection {
 }
 
 impl Workspace {
+    pub(crate) fn entra(&self) -> Option<&Entra> {
+        self.entra.as_ref()
+    }
+
     pub(crate) fn email_sign_in(&self) -> bool {
         self.email_sign_in
     }
@@ -207,6 +221,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
         })
         .transpose()?;
     let invitation_mailer = InvitationMailer::from_env(&origin, secure)?.map(Arc::new);
+    let entra = Entra::from_env(&origin, secure)?;
     let email_sign_in = match env::var("DUCTDELTA_EMAIL_SIGN_IN").as_deref() {
         Ok("1") => true,
         Err(env::VarError::NotPresent) => secure,
@@ -231,6 +246,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
         railway,
         invitation_mailer,
         email_sign_in,
+        entra,
         company_setup_code,
     };
     let runtime = runtime::Builder::new_multi_thread()
@@ -274,6 +290,7 @@ pub(crate) fn serve() -> Result<(), &'static str> {
             .merge(crate::company_setup::routes())
             .merge(crate::company_team::routes())
             .merge(crate::email_sign_in::routes())
+            .merge(crate::entra::routes())
             .merge(crate::company_access_history::routes())
             .merge(crate::cases::routes())
             .merge(crate::notice_rules::routes())
@@ -318,8 +335,9 @@ fn listen_address(railway: bool) -> Result<SocketAddr, &'static str> {
 }
 
 async fn health(State(workspace): State<Workspace>) -> StatusCode {
+    let entra_available = workspace.entra().is_some();
     let ready = workspace
-        .query(|client| {
+        .query(move |client| {
             client
                 .query_one(
                     "SELECT NOT (rolsuper OR rolcreaterole OR rolcreatedb OR rolbypassrls)
@@ -333,8 +351,11 @@ async fn health(State(workspace): State<Workspace>) -> StatusCode {
                         AND has_function_privilege('ductdelta.claim_email_code()', 'EXECUTE')
                         AND has_function_privilege(
                             'ductdelta.web_verify_email_code(uuid,bytea,bytea)', 'EXECUTE')
+                        AND has_function_privilege(
+                            'ductdelta.web_entra_login(uuid,uuid,uuid,text,bytea,integer)', 'EXECUTE')
+                        AND ($1 OR NOT ductdelta.web_entra_configured())
                      FROM pg_catalog.pg_roles WHERE rolname = current_user",
-                    &[],
+                    &[&entra_available],
                 )
                 .map(|row| row.get::<_, bool>(0))
         })
@@ -400,18 +421,19 @@ pub(crate) fn valid_key(value: &str) -> bool {
 }
 
 pub(crate) fn session(headers: &HeaderMap) -> Reply<Vec<u8>> {
-    for value in headers.get_all(header::COOKIE).iter() {
-        if let Ok(value) = value.to_str() {
-            for pair in value.split(';') {
-                if let Some(token) = pair.trim().strip_prefix("dd_session=")
-                    && valid_key(token)
-                {
-                    return Ok(key_digest(token));
-                }
-            }
-        }
-    }
-    Err(Rejection(StatusCode::UNAUTHORIZED, "Sign in required."))
+    cookie_token(headers, "dd_session")
+        .map(key_digest)
+        .ok_or_else(|| Rejection::unauthorized("Sign in required."))
+}
+
+pub(crate) fn cookie_token<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(';'))
+        .filter_map(|pair| pair.trim().split_once('='))
+        .find_map(|(key, token)| (key == name && valid_key(token)).then_some(token))
 }
 
 pub(crate) fn session_cookie(workspace: &Workspace, token: &str, age: u32) -> HeaderValue {
