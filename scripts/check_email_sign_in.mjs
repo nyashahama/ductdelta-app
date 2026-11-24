@@ -3,7 +3,7 @@ import { createInterface } from 'node:readline'
 import { pathToFileURL } from 'node:url'
 
 const { chromium } = await import(pathToFileURL(process.env.DUCTDELTA_PLAYWRIGHT_MODULE).href)
-const { DD_EMAIL_ORIGIN: origin, DD_EMAIL_SETUP: setup, DD_EMAIL_LEGACY: legacy } = process.env
+const { DD_EMAIL_ORIGIN: origin, DD_EMAIL_LEGACY: legacy } = process.env
 const input = createInterface({ input: process.stdin })
 const browser = await chromium.launch({ executablePath: process.env.DUCTDELTA_CHROME ?? '/usr/bin/google-chrome' })
 const button = (page, name) => page.getByRole('button', { name, exact: true })
@@ -64,7 +64,7 @@ try {
   await button(owner, 'Create a company').click()
   await field(owner, 'Company name').fill('Browser Mechanical')
   await field(owner, 'Your name').fill('Site Owner')
-  await field(owner, 'Company setup code').fill(setup)
+  assert.equal(await field(owner, 'Company setup code').count(), 0)
   await enterEmail(owner, 'browser-owner@example.test', { reload: true })
   await heading(owner, 'Projects').waitFor()
   await field(owner, 'Project name').fill('Browser plantroom')
