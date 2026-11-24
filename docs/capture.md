@@ -52,7 +52,7 @@ Use the `X-Request-Id` response header to find a request in the server log. HTTP
 
 ### Email sign-in
 
-Users enter their email and an eight-digit code. Each code expires after 10 minutes and can be used once. Company setup and invitation acceptance complete after email verification. Emailed invitations are bound to the invited address. Private invitations can be accepted with a verified work email.
+Users enter their email and an eight-digit code. Each code expires after 10 minutes and can be used once. The verification screen survives a reload of the same tab. Company setup and invitation acceptance complete after email verification. Send emailed invitations to the exact mailbox used by the recipient, including the spelling of the part before `@`. Private invitations can be accepted with a verified work email.
 
 On first sign-in after the upgrade, existing users choose **Use an existing key** and verify their email with their current access or recovery key. This preserves their account and memberships, retires both keys, and ends earlier sessions. If a connection drops after setup or invitation acceptance, request a sign-in code for the same address to recover the account.
 

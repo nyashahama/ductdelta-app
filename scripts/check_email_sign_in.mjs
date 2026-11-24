@@ -19,9 +19,21 @@ async function page(options) {
   return tab
 }
 
-async function enterEmail(tab, email) {
+async function enterEmail(tab, email, { reload = false, interrupted = false } = {}) {
   await field(tab, 'Email address').fill(email)
-  const queued = tab.waitForResponse(response => response.url() === origin + '/api/account/email-codes')
+  const codeUrl = origin + '/api/account/email-codes'
+  const captured = Promise.withResolvers()
+  if (interrupted) {
+    await tab.route(codeUrl, async (route) => {
+      try {
+        captured.resolve(await route.fetch())
+        await route.abort()
+      } catch (error) {
+        captured.reject(error)
+      }
+    }, { times: 1 })
+  }
+  const queued = interrupted ? captured.promise : tab.waitForResponse(response => response.url() === codeUrl)
   await button(tab, 'Email me a code').click()
   const response = await queued
   assert.equal(response.status(), 202, await response.text())
@@ -31,12 +43,17 @@ async function enterEmail(tab, email) {
   console.log(JSON.stringify({ id, email }))
   const code = await reply
   assert.match(code, /^[0-9]{8}$/)
+  if (reload) {
+    await tab.reload()
+    await heading(tab, 'Enter your sign-in code').waitFor({ timeout: 3000 })
+  }
   const codeField = field(tab, 'Sign-in code')
   assert.equal(await codeField.getAttribute('autocomplete'), 'one-time-code')
   await codeField.fill(code)
   const verification = tab.waitForResponse(response => response.url() === origin + '/api/account/email-codes/verify')
   await button(tab, 'Continue').click()
   assert.equal((await verification).status(), 204)
+  await tab.waitForFunction(() => !sessionStorage.getItem('ductdelta-pending-email-code'))
 }
 
 try {
@@ -48,7 +65,7 @@ try {
   await field(owner, 'Company name').fill('Browser Mechanical')
   await field(owner, 'Your name').fill('Site Owner')
   await field(owner, 'Company setup code').fill(setup)
-  await enterEmail(owner, 'browser-owner@example.test')
+  await enterEmail(owner, 'browser-owner@example.test', { reload: true })
   await heading(owner, 'Projects').waitFor()
   await field(owner, 'Project name').fill('Browser plantroom')
   await button(owner, 'Create project').click()
@@ -63,14 +80,14 @@ try {
   await member.goto(await inviteLink.inputValue())
   await heading(member, 'Join the company').waitFor()
   await member.waitForFunction(() => !location.hash)
-  await enterEmail(member, 'browser-member@example.test')
+  await enterEmail(member, 'browser-member@example.test', { reload: true })
   await member.getByText('Your account has no assigned projects.', { exact: true }).waitFor()
   assert.equal((await (await member.request.get(origin + '/api/session')).json()).name, 'Mobile Member')
   assert.ok(await member.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
 
   const returning = await page(phone)
   await returning.goto(origin)
-  await enterEmail(returning, 'browser-member@example.test')
+  await enterEmail(returning, 'browser-member@example.test', { interrupted: true })
   await returning.getByText('Your account has no assigned projects.', { exact: true }).waitFor()
   assert.equal((await (await returning.request.get(origin + '/api/session')).json()).name, 'Mobile Member')
 
@@ -81,7 +98,7 @@ try {
   await enterEmail(existing, 'browser-legacy@example.test')
   await heading(existing, 'Project overview').waitFor()
   assert.deepEqual(errors, [])
-  console.log('PASS: Chromium verifies company setup, mobile invitation, returning sign-in and existing-account migration using delivered codes')
+  console.log('PASS: Chromium verifies company setup, mobile invitation after reload, sign-in after an interrupted response and existing-account migration')
 } finally {
   input.close()
   await browser.close()

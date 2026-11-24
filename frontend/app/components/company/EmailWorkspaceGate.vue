@@ -5,7 +5,12 @@ import { useTimeoutFn } from '@vueuse/core'
 const props = defineProps<{ invitation: string, savedKey?: string }>()
 const emit = defineEmits<{ done: [], cancel: [] }>()
 const { refreshSession, signInError, sessionCheckError, restoreSession } = useWorkspace()
-const mode = ref<'sign_in' | 'company' | 'upgrade'>('sign_in')
+type Mode = 'sign_in' | 'company' | 'upgrade'
+type PendingChallenge = { id: string, email: string, mode: Mode, invitationDigest: string, requestedAt: number }
+const challengeStorage = 'ductdelta-pending-email-code'
+const resendInterval = 60_000
+const codeLifetime = 600_000
+const mode = ref<Mode>('sign_in')
 const email = ref('')
 const code = ref('')
 const company = ref('')
@@ -18,7 +23,8 @@ const pending = ref(false)
 const verified = ref(false)
 const error = ref('')
 const codeInput = ref<{ inputRef?: HTMLInputElement }>()
-const resend = useTimeoutFn(() => {}, 60_000, { immediate: false })
+const resendDelay = ref(resendInterval)
+const resend = useTimeoutFn(() => {}, resendDelay, { immediate: false })
 
 const purpose = computed(() => props.invitation && mode.value !== 'upgrade' ? 'invite' : mode.value)
 const title = computed(() => {
@@ -41,7 +47,56 @@ async function loadRegistration() {
   }
 }
 
-function changeMode(next: typeof mode.value) {
+function storeChallenge(saved?: PendingChallenge) {
+  try {
+    if (saved) sessionStorage.setItem(challengeStorage, JSON.stringify(saved))
+    else sessionStorage.removeItem(challengeStorage)
+  } catch {
+    // The current tab can finish verification without browser storage.
+  }
+}
+
+async function invitationDigest(invitation: string) {
+  if (!invitation) return ''
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(invitation))
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function openChallenge(saved: PendingChallenge) {
+  mode.value = saved.mode
+  email.value = saved.email
+  challenge.value = saved.id
+  setupCode.value = ''
+  legacyKey.value = ''
+  resendDelay.value = Math.max(0, saved.requestedAt + resendInterval - Date.now())
+  if (resendDelay.value) resend.start()
+}
+
+onMounted(async () => {
+  const invitation = props.invitation
+  try {
+    const stored = sessionStorage.getItem(challengeStorage)
+    const saved: PendingChallenge | null = JSON.parse(stored ?? 'null')
+    if (saved && typeof saved.id === 'string' && /^[0-9a-f-]{36}$/i.test(saved.id)
+      && typeof saved.email === 'string' && saved.email.length <= 254
+      && (saved.mode === 'sign_in' || saved.mode === 'company' || saved.mode === 'upgrade')
+      && typeof saved.requestedAt === 'number' && saved.requestedAt <= Date.now()
+      && saved.requestedAt + codeLifetime > Date.now()
+      && saved.invitationDigest === await invitationDigest(invitation)) {
+      if (!pending.value && !challenge.value && invitation === props.invitation) {
+        if (stored === sessionStorage.getItem(challengeStorage)) openChallenge(saved)
+      }
+    } else if (!pending.value && !challenge.value && invitation === props.invitation
+      && stored === sessionStorage.getItem(challengeStorage)) {
+      storeChallenge()
+    }
+  } catch {
+    // Starting a fresh request remains available.
+  }
+})
+
+function changeMode(next: Mode) {
+  storeChallenge()
   resend.stop()
   mode.value = next
   challenge.value = ''
@@ -54,11 +109,18 @@ function changeMode(next: typeof mode.value) {
   if (next === 'company') void loadRegistration()
 }
 
+function changeEmail() {
+  changeMode(mode.value)
+  email.value = ''
+}
+
 watch(() => props.invitation, () => changeMode('sign_in'))
 
 async function submit() {
   if (pending.value || sessionCheckError.value) return
-  if (purpose.value === 'company' && ['loading', 'unavailable'].includes(registration.value)) return
+  if (!challenge.value && purpose.value === 'company' && ['loading', 'unavailable'].includes(registration.value)) return
+  const intent = purpose.value
+  const invitation = props.invitation
   pending.value = true
   error.value = ''
   signInError.value = ''
@@ -67,16 +129,31 @@ async function submit() {
       const additional = {
         sign_in: {},
         company: { company: company.value, name: name.value, setup_code: setupCode.value.trim() || undefined },
-        invite: { token: props.invitation },
-        upgrade: { key: legacyKey.value.trim(), token: props.invitation || undefined }
-      }[purpose.value]
-      const result = await api<{ id: string }>('/api/account/email-codes', requestJson({
-        email: email.value.trim(), purpose: purpose.value, ...additional
-      }))
-      challenge.value = result.id
-      resend.start()
-      setupCode.value = ''
-      legacyKey.value = ''
+        invite: { token: invitation },
+        upgrade: { key: legacyKey.value.trim(), token: invitation || undefined }
+      }[intent]
+      const saved = {
+        id: crypto.randomUUID(), email: email.value.trim(), mode: mode.value,
+        invitationDigest: await invitationDigest(invitation), requestedAt: Date.now()
+      }
+      if (invitation !== props.invitation) return
+      storeChallenge(saved)
+      try {
+        await api('/api/account/email-codes', requestJson({
+          id: saved.id, email: saved.email, purpose: intent, ...additional
+        }))
+      } catch (cause) {
+        if (invitation !== props.invitation) return
+        if (cause instanceof ApiError && cause.status < 500) {
+          storeChallenge()
+          throw cause
+        }
+        openChallenge(saved)
+        error.value = 'The request was interrupted. Check your email for the code or request another one.'
+        return
+      }
+      if (invitation !== props.invitation) return
+      openChallenge(saved)
       await nextTick()
       codeInput.value?.inputRef?.focus()
       return
@@ -84,12 +161,13 @@ async function submit() {
 
     if (!verified.value) {
       await api('/api/account/email-codes/verify', requestJson({ id: challenge.value, code: code.value.trim() }))
+      if (invitation === props.invitation) storeChallenge()
       verified.value = true
       code.value = ''
     }
     await refreshSession()
-    if (purpose.value === 'company') await navigateTo({ path: '/', query: { view: 'company' } }, { replace: true })
-    emit('done')
+    if (intent === 'company') await navigateTo({ path: '/', query: { view: 'company' } }, { replace: true })
+    if (invitation === props.invitation) emit('done')
   } catch (cause) {
     if (props.invitation && cause instanceof ApiError && cause.status === 404) {
       error.value = 'This invitation is unavailable. Check the invited email address or ask for a new invitation.'
@@ -251,7 +329,7 @@ async function submit() {
           :label="challenge ? 'Continue' : 'Email me a code'"
           block
           :loading="pending"
-          :disabled="purpose === 'company' && ['loading', 'unavailable'].includes(registration)"
+          :disabled="!challenge && purpose === 'company' && ['loading', 'unavailable'].includes(registration)"
         />
       </form>
 
@@ -265,6 +343,14 @@ async function submit() {
       />
 
       <div class="mt-4 flex flex-wrap gap-2 justify-between">
+        <UButton
+          v-if="challenge && !verified"
+          label="Change email"
+          color="neutral"
+          variant="link"
+          :disabled="pending"
+          @click="changeEmail"
+        />
         <UButton
           v-if="challenge && !verified"
           label="Request another code"
@@ -287,7 +373,7 @@ async function submit() {
           color="neutral"
           variant="link"
           :disabled="pending"
-          @click="emit('cancel')"
+          @click="changeMode('sign_in'); emit('cancel')"
         />
         <template v-else-if="purpose === 'sign_in' && !challenge">
           <UButton
