@@ -10,6 +10,7 @@ import re
 import secrets
 import subprocess
 import time
+from uuid import uuid4
 
 from check_invitation_email import draft, mail_environment, provider
 from check_workspace import REPORTER, ROOT, VIEWER, workspace
@@ -20,10 +21,10 @@ EMAIL = "owner@example.test"
 SETUP = secrets.token_hex(32)
 
 
-def code_for(requests, challenge, email):
+def code_for(requests, challenge, email, after=0):
     for _ in range(100):
-        for identifier, message in list(requests):
-            if identifier == f"email-code/{challenge}":
+        for identifier, message in list(requests)[after:]:
+            if identifier.startswith(f"email-code/{challenge}/"):
                 assert message["to"] == [email]
                 code = re.search(r"\b[0-9]{8}\b", message["text"])[0]
                 assert code in message["html"]
@@ -53,7 +54,14 @@ def check(server, messages):
     assert server.request("/api/account/email-sign-in")[0] == {"enabled": True}
     registration = {"email": EMAIL, "purpose": "company", "company": "Test Mechanical", "name": "Test Owner"}
     server.request(CODES, "POST", registration, expected=403)
-    challenge = request_code(server, EMAIL, "company", company="Test Mechanical", name="Test Owner", setup_code=SETUP)
+    identifier = str(uuid4())
+    challenge = request_code(server, EMAIL, "company", company="Test Mechanical", name="Test Owner",
+                             setup_code=SETUP, id=identifier)
+    assert challenge == identifier
+    assert request_code(server, EMAIL, "company", company="Test Mechanical", name="Test Owner",
+                        setup_code=SETUP, id=identifier) == identifier
+    server.request(CODES, "POST", {**registration, "id": identifier, "company": "Changed", "setup_code": SETUP},
+                   expected=409)
     code = code_for(messages, challenge, EMAIL)
     assert server.sql("SELECT count(*) FROM ductdelta.organization WHERE name = 'Test Mechanical'") == "0"
     verify(server, challenge, "99999999" if code != "99999999" else "00000000", expected=401)
@@ -78,16 +86,29 @@ def check(server, messages):
                 return False
         assert sorted(pool.map(lambda _: attempt(), range(2))) == [False, True]
 
+    # A request identifier may outlive its row. It must never regenerate a used code.
+    original_delivery = server.sql(f"SELECT delivery_id FROM ductdelta.email_code WHERE id = '{challenge}'")
+    server.sql(f"UPDATE ductdelta.email_code SET created_at = clock_timestamp() - interval '2 hours' WHERE id = '{challenge}'")
+    server.sql("SELECT count(*) FROM ductdelta.claim_email_code()")
+    assert server.sql(f"SELECT count(*) FROM ductdelta.email_code WHERE id = '{challenge}'") == "0"
+    after = len(messages)
+    assert request_code(server, EMAIL, id=challenge) == challenge
+    replacement = code_for(messages, challenge, EMAIL, after=after)
+    assert server.sql(f"SELECT delivery_id FROM ductdelta.email_code WHERE id = '{challenge}'") != original_delivery
+    if replacement != code:
+        verify(server, challenge, code, expected=401)
+    verify(server, challenge, replacement)
+
     unknown = request_code(server, "unknown@example.test")
     verify(server, unknown, "00000000", expected=401)
-    assert all(identifier != f"email-code/{unknown}" for identifier, _ in messages)
+    assert all(not identifier.startswith(f"email-code/{unknown}/") for identifier, _ in messages)
     print("PASS: email is verified before setup, sign-in is private, and concurrent replay creates one session")
 
     retry_email = "first@example.test"
     retry = request_code(server, retry_email, "company", company="Retry Mechanical", name="Retry Owner", setup_code=SETUP)
-    delivery = f"email-code/{retry}"
+    delivery = f"email-code/{retry}/"
     for _ in range(100):
-        matching = [body for identifier, body in list(messages) if identifier == delivery]
+        matching = [(identifier, body) for identifier, body in list(messages) if identifier.startswith(delivery)]
         if len(matching) == 2:
             break
         time.sleep(0.1)
@@ -101,12 +122,16 @@ def check(server, messages):
     server.request("/api/invitations/accept", "POST", {
         "token": token, "use_current_account": False, "recovery_key": secrets.token_hex(32),
     }, expected=403)
-    challenge = request_code(server, "member@example.test", "invite", token=token)
-    member = verify(server, challenge, code_for(messages, challenge, "member@example.test"))
+    mailbox = "Member@example.test"
+    challenge = request_code(server, mailbox, "invite", token=token)
+    member = verify(server, challenge, code_for(messages, challenge, mailbox))
     assert server.request("/api/companies", cookie=member)[0][0]["role"] == "member"
     server.request(CODES, "POST", {"email": "member@example.test", "purpose": "invite", "token": token}, expected=404)
+    challenge = request_code(server, mailbox.lower())
+    returning = verify(server, challenge, code_for(messages, challenge, mailbox))
+    assert server.request("/api/companies", cookie=returning)[0] == server.request("/api/companies", cookie=member)[0]
 
-    invitation_email = "recipient@example.test"
+    invitation_email = "Project.Recipient@example.test"
     sent, _ = server.request(company + "/invitations", "POST", draft(invitation_email), owner, expected=202)
     for _ in range(100):
         message = next((body for identifier, body in list(messages) if identifier == f"invitation/{sent['id']}"), None)
@@ -116,7 +141,7 @@ def check(server, messages):
     assert message
     token = re.search(r"#invite=([0-9a-f]{64})", message["text"])[1]
     server.request(CODES, "POST", {"email": "wrong@example.test", "purpose": "invite", "token": token}, expected=404)
-    challenge = request_code(server, invitation_email, "invite", token=token)
+    challenge = request_code(server, invitation_email.lower(), "invite", token=token)
     code = code_for(messages, challenge, invitation_email)
     server.request(f"{company}/invitations/{sent['id']}", "DELETE", cookie=owner, expected=204)
     verify(server, challenge, code, expected=404)
@@ -161,8 +186,27 @@ def check(server, messages):
     allow_resend(server, upgrade_email)
     challenge = request_code(server, upgrade_email)
     code = code_for(messages, challenge, upgrade_email)
-    server.sql(f"UPDATE ductdelta.email_code SET expires_at = statement_timestamp() WHERE id = '{challenge}'")
-    verify(server, challenge, code, expected=401)
+    lock_expression = f"hashtextextended('{upgrade_email}', 746231)"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        holding = pool.submit(server.sql, f"SELECT pg_advisory_xact_lock({lock_expression}), pg_sleep(4)")
+        for _ in range(20):
+            if server.sql(f"SELECT pg_try_advisory_xact_lock({lock_expression})") == "f":
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError("Email advisory lock was not acquired")
+        server.sql(f"""UPDATE ductdelta.email_code
+                    SET expires_at = clock_timestamp() + interval '2 seconds' WHERE id = '{challenge}'""")
+        waiting = pool.submit(verify, server, challenge, code, 401)
+        for _ in range(20):
+            if server.sql("""SELECT count(*) FROM pg_stat_activity
+                             WHERE application_name = 'ductdelta_workspace_check' AND wait_event = 'advisory'""") == "1":
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError("Code verification did not wait on the email lock")
+        holding.result(timeout=5)
+        waiting.result(timeout=5)
     print("PASS: legacy migration keeps the actor and grants, retires the key, and codes expire and enforce attempt and resend limits")
 
 

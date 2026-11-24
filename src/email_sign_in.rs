@@ -29,6 +29,7 @@ async fn policy(State(workspace): State<Workspace>) -> Json<Value> {
 
 #[derive(Deserialize)]
 struct CodeRequest {
+    id: Option<Uuid>,
     email: String,
     #[serde(flatten)]
     purpose: Purpose,
@@ -64,7 +65,7 @@ async fn request_code(
     Json(input): Json<CodeRequest>,
 ) -> Reply<(StatusCode, Json<Value>)> {
     let mailer = mailer(&workspace)?;
-    let email = mailbox(&input.email)?.to_ascii_lowercase();
+    let email = mailbox(&input.email)?;
     let (purpose, company, name, invitation, legacy) = match input.purpose {
         Purpose::SignIn => ("sign_in", None, None, None, None),
         Purpose::Company {
@@ -110,14 +111,18 @@ async fn request_code(
             ));
         }
     };
-    let id = Uuid::new_v4();
-    let digest = code_digest(mailer, id, &code_for(mailer, id));
+    let id = input.id.unwrap_or_else(Uuid::new_v4);
+    // A fresh server-side ID prevents reusing a code if the client retries an
+    // identifier whose previous challenge has already been purged.
+    let delivery_id = Uuid::new_v4();
+    let digest = code_digest(mailer, id, &code_for(mailer, delivery_id));
     workspace
         .query(move |database| {
             database.execute(
-                "SELECT ductdelta.web_request_email_code($1, $2, $3, $4, $5, $6, $7, $8)",
+                "SELECT ductdelta.web_request_email_code($1, $2, $3, $4, $5, $6, $7, $8, $9)",
                 &[
                     &id,
+                    &delivery_id,
                     &email,
                     &digest.as_slice(),
                     &purpose,
@@ -177,8 +182,8 @@ async fn verify(
         .into_response())
 }
 
-fn code_for(mailer: &InvitationMailer, id: Uuid) -> String {
-    let digest = mailer.keyed_digest(b"ductdelta email code v1", id, b"");
+fn code_for(mailer: &InvitationMailer, delivery_id: Uuid) -> String {
+    let digest = mailer.keyed_digest(b"ductdelta email code v1", delivery_id, b"");
     let value = u64::from_be_bytes(digest[..8].try_into().expect("eight bytes"));
     format!("{:08}", value % 100_000_000)
 }
@@ -189,6 +194,7 @@ fn code_digest(mailer: &InvitationMailer, id: Uuid, code: &str) -> [u8; 32] {
 
 struct Delivery {
     id: Uuid,
+    delivery_id: Uuid,
     email: String,
     digest: Vec<u8>,
     attempt: i32,
@@ -203,6 +209,7 @@ impl Delivery {
                     .map(|row| {
                         Ok(Self {
                             id: row.try_get("id")?,
+                            delivery_id: row.try_get("delivery_id")?,
                             email: row.try_get("email")?,
                             digest: row.try_get("digest")?,
                             attempt: row.try_get("attempt")?,
@@ -214,7 +221,7 @@ impl Delivery {
     }
 
     async fn send(self, mailer: &InvitationMailer, workspace: &Workspace) -> Reply<()> {
-        let code = code_for(mailer, self.id);
+        let code = code_for(mailer, self.delivery_id);
         let proof = code_digest(mailer, self.id, &code);
         let mut delay = None;
         if bool::from(proof.as_slice().ct_eq(&self.digest)) {
@@ -224,7 +231,7 @@ impl Delivery {
             let text = format!("{message}\n\n{detail}");
             let result = mailer
                 .send(
-                    &format!("email-code/{}", self.id),
+                    &format!("email-code/{}/{}", self.id, self.delivery_id),
                     Message {
                         sender: mailer.sender(),
                         recipient: &self.email,
@@ -252,8 +259,8 @@ impl Delivery {
         workspace
             .query(move |database| {
                 database.execute(
-                    "SELECT ductdelta.finish_email_code($1, $2, $3)",
-                    &[&self.id, &self.attempt, &delay],
+                    "SELECT ductdelta.finish_email_code($1, $2, $3, $4)",
+                    &[&self.id, &self.delivery_id, &self.attempt, &delay],
                 )
             })
             .await?;
