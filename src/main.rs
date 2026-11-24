@@ -5,6 +5,8 @@ mod company_access_history;
 mod company_setup;
 mod company_team;
 mod email_layout;
+mod email_sign_in;
+mod entra;
 mod evidence;
 mod frontend;
 mod invitation_mailer;

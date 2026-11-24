@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
+import EmailWorkspaceGate from '~/components/company/EmailWorkspaceGate.vue'
 import WorkspaceGate from '~/components/company/WorkspaceGate.vue'
+import { api } from '~/utils/api'
 
 const {
   session, companies, project, projects, view, signing, target, restoreSession, signOut
@@ -12,6 +14,22 @@ const invitation = ref('')
 const invitationStorage = 'ductdelta-pending-invitation'
 const pendingKeys = ref<string[]>([])
 const keyStorage = 'ductdelta-pending-keys'
+const emailSignIn = ref<boolean>()
+const policyError = ref(false)
+const recovery = computed(() => emailSignIn.value === true && route.query.recover === '1' && !invitation.value)
+const ssoSignIn = computed(() => emailSignIn.value === true && typeof route.query.sso === 'string'
+  && /^[a-f0-9-]{36}$/i.test(route.query.sso) && !invitation.value)
+const needsGate = computed(() => !session.value || Boolean(invitation.value) || recovery.value || ssoSignIn.value
+  || (emailSignIn.value !== true && pendingKeys.value.length > 0))
+
+async function loadSignInPolicy() {
+  policyError.value = false
+  try {
+    emailSignIn.value = (await api<{ enabled: boolean }>('/api/account/email-sign-in')).enabled
+  } catch {
+    policyError.value = true
+  }
+}
 
 function storeKeys(keys: string[]) {
   try {
@@ -47,6 +65,9 @@ function clearInvitation() {
 function entered() {
   clearInvitation()
   storeKeys([])
+  if (recovery.value || ssoSignIn.value || route.query.sso_error) {
+    void router.replace(target('security'))
+  }
 }
 
 const links = computed<NavigationMenuItem[]>(() => ([
@@ -68,7 +89,7 @@ const groups = computed(() => [{
 
 async function selectProject(id: string) {
   open.value = false
-  await navigateTo(target(view.value === 'company' || view.value === 'sessions' ? 'overview' : view.value, id))
+  await navigateTo(target(['company', 'sessions', 'security'].includes(view.value) ? 'overview' : view.value, id))
 }
 
 function readInvitation(hash: string) {
@@ -96,19 +117,46 @@ onMounted(async () => {
     pendingKeys.value = []
   }
   readInvitation(location.hash)
-  await restoreSession()
+  await Promise.all([restoreSession(), loadSignInPolicy()])
 })
 </script>
 
 <template>
-  <main v-if="session === undefined" class="min-h-dvh grid place-items-center" role="status">
-    <p class="text-muted">
+  <main
+    v-if="session === undefined || (needsGate && emailSignIn === undefined)"
+    class="min-h-dvh grid place-items-center"
+  >
+    <UAlert
+      v-if="policyError"
+      color="error"
+      variant="subtle"
+      title="Could not load sign-in."
+    >
+      <template #actions>
+        <UButton
+          label="Try again"
+          color="neutral"
+          variant="outline"
+          @click="loadSignInPolicy"
+        />
+      </template>
+    </UAlert>
+    <p v-else class="text-muted" role="status">
       Opening DuctDelta…
     </p>
   </main>
 
+  <EmailWorkspaceGate
+    v-else-if="needsGate && emailSignIn"
+    :invitation="invitation"
+    :saved-key="pendingKeys[0]"
+    :recovery="recovery"
+    @done="entered"
+    @cancel="clearInvitation"
+  />
+
   <WorkspaceGate
-    v-else-if="!session || invitation || pendingKeys.length"
+    v-else-if="needsGate"
     :invitation="invitation"
     :pending-keys="pendingKeys"
     @retain="addKey"
@@ -118,7 +166,7 @@ onMounted(async () => {
     @cancel="clearInvitation"
   />
 
-  <UDashboardGroup v-else unit="rem">
+  <UDashboardGroup v-else-if="session" unit="rem">
     <UDashboardSidebar
       id="workspace"
       v-model:open="open"

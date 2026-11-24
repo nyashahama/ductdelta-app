@@ -16,7 +16,10 @@ fn server_command(port: u16, database: &str) -> Command {
         .env("PORT", port.to_string())
         .env("DUCTDELTA_ORIGIN", ORIGIN)
         .env("DUCTDELTA_DATABASE_URL", database)
-        .env("DUCTDELTA_COMPANY_SETUP_CODE", "f".repeat(64));
+        .env("DUCTDELTA_COMPANY_SETUP_CODE", "f".repeat(64))
+        .env("DUCTDELTA_RESEND_API_KEY", "test-only")
+        .env("DUCTDELTA_RESEND_FROM", "login@example.test")
+        .env("DUCTDELTA_INVITE_SIGNING_KEY", "e".repeat(64));
     command
 }
 
@@ -98,4 +101,16 @@ fn railway_rejects_public_database_hosts() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn railway_requires_email_delivery_for_sign_in() {
+    let output = server_command(8080, DATABASE)
+        .env_remove("DUCTDELTA_RESEND_API_KEY")
+        .env_remove("DUCTDELTA_RESEND_FROM")
+        .env_remove("DUCTDELTA_INVITE_SIGNING_KEY")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Configure the Resend mailer"));
 }

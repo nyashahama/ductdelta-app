@@ -36,11 +36,11 @@ The list shows up to 50 records, newest server receipt first, with a one-line no
 
 Apply the migrations in number order. Build the Nuxt workspace and set `DUCTDELTA_WEB_DIST` to the absolute path of `frontend/.output/public`. Run `ductdelta serve` with a local PostgreSQL login that belongs to `ductdelta_web_runtime`. That role can invoke workspace commands.
 
-New companies and their members enroll in the browser. Company administrators share one-time invitation links privately. Each browser-enrolled user keeps their recovery key in a separate safe place. Recovery replaces both keys and invalidates earlier sessions.
+New companies and their members enroll in the browser. Company administrators can email invitations or share one-time links privately. Public HTTPS deployments use email sign-in.
 
 Open Account sessions from the account menu to check active sessions across your company memberships. You can sign out another session or all other sessions and keep the current browser signed in. Run `python3 scripts/check_account_sessions.py` to verify session isolation, revocation, and recovery.
 
-For an upgraded installation, migration 0008 preserves project membership and creates company membership without assigning admin authority. After verifying the member's authority, a deployment operator with `ductdelta_company_bootstrap` can run `ductdelta appoint-first-admin COMPANY_UUID ACTOR_UUID`. This applies once per upgraded company and records the operator and time. The operator can issue a temporary sign-in key for a legacy actor with `ductdelta issue-key ACTOR_UUID DISPLAY_NAME` and deliver it privately.
+For an upgraded installation, migration 0008 preserves project membership and creates company membership without assigning admin authority. After verifying the member's authority, a deployment operator with `ductdelta_company_bootstrap` can run `ductdelta appoint-first-admin COMPANY_UUID ACTOR_UUID`. This applies once per upgraded company and records the operator and time. If a legacy user lost both keys, an operator can verify their identity and privately issue a temporary enrollment key using `ductdelta issue-key ACTOR_UUID DISPLAY_NAME`.
 
 Company administrators can choose a default invitation lifetime from 1 to 14 days in Company settings. The initial default is 7 days. Saved changes apply to invitations issued afterward. Access history records who made invitation, company role and project access changes from migration 0014 onward. It includes the project creator's first access grant. Run `python3 scripts/check_company_access_history.py` to verify the settings, access history and preservation of a pre-upgrade invitation.
 
@@ -50,11 +50,46 @@ The server reuses up to 16 PostgreSQL connections per process. Requests that nee
 
 Use the `X-Request-Id` response header to find a request in the server log. HTTPS enables JSON request logs by default. Set `DUCTDELTA_TRACE_REQUESTS=1` to enable them on loopback, or `0` to disable them. Logs include the route template, status and elapsed milliseconds. Run `python3 scripts/check_request_trace.py` to check correlation and log privacy.
 
+### Email sign-in
+
+Users enter their email and an eight-digit code. Each code expires after 10 minutes and can be used once. The verification screen survives a reload of the same tab. Company setup and invitation acceptance complete after email verification. Send emailed invitations to the exact mailbox used by the recipient, including the spelling of the part before `@`. Private invitations can be accepted with a verified work email.
+
+On first sign-in after the upgrade, existing users choose **Use an existing key** and verify their email with their current access or recovery key. This preserves their account and memberships, retires both keys, and ends earlier sessions. If a connection drops after setup or invitation acceptance, request a sign-in code for the same address to recover the account.
+
+After signing in, open **Account security** and generate a recovery code within 10 minutes. Save it outside the sign-in mailbox. A replacement invalidates the previously saved code. To change an address, choose **Change sign-in email** in Account security or **Recover account** on the sign-in screen. Enter the saved code and confirm the new email with a one-time code. DuctDelta keeps the account and memberships, consumes the recovery code, ends earlier sessions, and sends a notice to the previous address. Generate a replacement after changing the address. A linked work account can still sign in through Entra if the mailbox is lost. Keep at least one recovery method available.
+
+Before deploying the web image on HTTPS, apply migration 0021 and configure `DUCTDELTA_RESEND_API_KEY` with sending access, `DUCTDELTA_RESEND_FROM` on a verified domain, and a persistent `DUCTDELTA_INVITE_SIGNING_KEY` of 64 random hex digits. Changing the signing key invalidates pending codes and prevents already queued invitation messages from being sent. Delivered invitation links remain valid until use, cancellation, or expiry.
+
+Once users enroll with email, use an email-capable build for subsequent deployments, including rollbacks.
+
+Company creation on a public HTTPS origin requires `DUCTDELTA_COMPANY_SETUP_CODE`, a separate 32-byte random value encoded as 64 hex digits. Share the code privately with the people authorized to create companies. Invited team members can join with their own links.
+
+Run `python3 scripts/check_email_sign_in.py` to verify delivery, enrollment, sign-in, migration and reuse against a loopback provider. Add `--browser` with a built frontend, Chromium and `DUCTDELTA_PLAYWRIGHT_MODULE` set to run the browser flow. The offline demo uses keys on loopback. Set `DUCTDELTA_EMAIL_SIGN_IN=1` with a loopback mail provider to exercise email sign-in locally.
+
+### Microsoft Entra sign-in and company MFA
+
+Register a multitenant web application for Microsoft Entra organizational accounts. Add the exact deployed HTTPS URL ending in `/api/account/sso/callback` as a Web redirect URI. Store the application ID in `DUCTDELTA_ENTRA_CLIENT_ID` and its credential in `DUCTDELTA_ENTRA_CLIENT_SECRET`. Apply migration 0022 before configuring a company. The browser signs in through Microsoft using authorization code flow with PKCE. The `openid` and `profile` scopes provide the signed ID token and the user object ID used for the link. Each user first needs an existing DuctDelta company membership and verified sign-in email. [Microsoft ID token claims](https://learn.microsoft.com/en-us/entra/identity-platform/id-token-claims-reference)
+
+A deployment operator with `ductdelta_company_bootstrap` can configure the company's tenant and link each DuctDelta actor to the verified Entra directory object ID. Look up the IDs through the authorized company roster and tenant directory before linking. Replace the placeholders in these PostgreSQL commands.
+
+```sql
+SELECT ductdelta.configure_company_entra('COMPANY_UUID', 'TENANT_UUID');
+SELECT ductdelta.link_company_entra('COMPANY_UUID', 'ACTOR_UUID', 'ENTRA_USER_OBJECT_UUID');
+```
+
+Share `/?sso=COMPANY_UUID` on the workspace origin. Signed-in members can also choose **Sign in with Microsoft** in Account security. Verify sign-in with a linked member before enabling enforcement. Call `ductdelta.unlink_company_entra(company_uuid, actor_uuid)` to remove an association and revoke its work-account sessions.
+
+For stronger admin and finance sign-in, configure an enabled Entra Conditional Access authentication context that requires MFA or a phishing-resistant authentication strength for the protected users. Configure `acrs` as an optional ID token claim and test that an account outside the policy cannot obtain the required context for privileged access. Link every current company administrator and finance member, then store the matching context in DuctDelta.
+
+```sql
+SELECT ductdelta.configure_company_entra('COMPANY_UUID', 'TENANT_UUID', 'c1');
+```
+
+A company with enforcement enabled requires a work-account session containing that company's verified context for admin and finance project routes. Add a work-account link for newly granted administrators and finance members before they use those features. Each company requires its own work-account session.
+
+Run `python3 scripts/check_account_security.py` for email change and recovery. Run `python3 scripts/check_company_sign_in.py` against signed loopback Entra tokens. Add `--browser` and configure Chromium and Playwright as above for the browser redirect check. Verify each real Entra tenant's policy and Resend delivery in staging before rollout.
+
 ### Invitation email
-
-Company administrators can create a private link or email an invitation through Resend. For email, configure `DUCTDELTA_RESEND_API_KEY` with sending access, `DUCTDELTA_RESEND_FROM` with an address on a verified domain, and `DUCTDELTA_INVITE_SIGNING_KEY` with a persistent 32-byte secret encoded as 64 hex digits. Keep the signing key in the deployment secret store. Changing it prevents already queued messages from being sent. Delivered invitation links remain valid until use, cancellation, or expiry.
-
-Email on a public HTTPS origin requires `DUCTDELTA_COMPANY_SETUP_CODE`, a separate 32-byte random value encoded as 64 hex digits. Share the code privately with the people authorized to create companies. Invited team members can join with their own links.
 
 Disable open and click tracking on the sending domain. The message contains the private link. Restrict access to the sender account and its logs. The app distinguishes a queued email from one accepted by Resend. Inbox delivery can be checked through Resend. If a message needs attention, cancel it and create a new invitation or private link.
 
@@ -68,7 +103,7 @@ Run the web and PostgreSQL 18 containers in the same Railway environment and reg
 
 1. Build the private database service using `deploy/postgres.Dockerfile` at the repository root. Mount a volume at `/var/lib/postgresql`. Set `POSTGRES_PASSWORD` and `DUCTDELTA_APP_PASSWORD` to different randomly generated 64-digit hex values. The first initialization applies migrations and creates the restricted `ductdelta_app` login. Use `postgres` as the database administrator and `ductdelta` as the database name.
 2. Build the web service from the root `Dockerfile`. Set `DUCTDELTA_DATABASE_URL` to `postgresql://ductdelta_app:PASSWORD@HOST:5432/ductdelta` using references to the database service's `DUCTDELTA_APP_PASSWORD` and `RAILWAY_PRIVATE_DOMAIN`. Set `DUCTDELTA_ORIGIN` to the exact HTTPS origin and `DUCTDELTA_COMPANY_SETUP_CODE` to a random 64-digit hex value. Use port 8080 and `/healthz` for the deployment health check. The check requires the migrated schema and the runtime role.
-3. Enable invitation email with a sending-only Resend key for `notify.ductdelta.com`, a sender such as `DuctDelta <invites@notify.ductdelta.com>`, and a stable invitation signing key. Keep tracking off and verify delivery by accepting a test invitation in the browser.
+3. Configure the [Resend mailer](#email-sign-in) in each environment with a sending-only key, a verified sender such as `DuctDelta <invites@notify.ductdelta.com>`, and a stable invitation signing key. Keep tracking off. Verify delivery by completing sign-in and accepting a test invitation in the browser.
 
 For later migrations, back up the database and deploy the updated database image first. On an existing volume, the image applies pending migrations over the local socket before accepting network connections. If a migration fails, startup stops. After correcting the failure, restart the database service to retry. Restore a backup in a disposable environment before admitting live customer records.
 

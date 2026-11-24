@@ -105,15 +105,20 @@ impl InvitationMailer {
     }
 
     pub(crate) fn token(&self, id: Uuid) -> String {
-        let mut mac = Hmac::<Sha256>::new_from_slice(self.signing_key.as_bytes())
-            .expect("HMAC accepts a key of any size");
-        mac.update(b"ductdelta invitation v1");
-        mac.update(id.as_bytes());
         let mut token = String::with_capacity(64);
-        for byte in mac.finalize().into_bytes() {
+        for byte in self.keyed_digest(b"ductdelta invitation v1", id, b"") {
             write!(token, "{byte:02x}").expect("writing to a string cannot fail");
         }
         token
+    }
+
+    pub(crate) fn keyed_digest(&self, domain: &[u8], id: Uuid, value: &[u8]) -> [u8; 32] {
+        let mut mac = Hmac::<Sha256>::new_from_slice(self.signing_key.as_bytes())
+            .expect("HMAC accepts a key of any size");
+        mac.update(domain);
+        mac.update(id.as_bytes());
+        mac.update(value);
+        mac.finalize().into_bytes().into()
     }
 
     pub(crate) async fn deliver_queued(&self, workspace: &Workspace) {
