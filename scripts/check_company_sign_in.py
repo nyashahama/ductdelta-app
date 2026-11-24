@@ -92,6 +92,8 @@ def entra_provider():
                 claims = {"iss": f"{origin}/{TENANT}/v2.0", "sub": "local-id-token-subject",
                           "aud": CLIENT, "nonce": request["nonce"], "iat": now, "exp": now + 1800,
                           "tid": TENANT, "oid": OWNER, "email": EMAIL, "acrs": ["c1"], **overrides}
+                if "profile" not in request["scope"].split():
+                    del claims["oid"]
                 encoded = b".".join(base64url(json.dumps(part).encode()) for part in (
                     {"alg": "RS256", "kid": "loopback"}, claims,
                 ))
@@ -160,7 +162,7 @@ def check(server, messages, origin, grants):
         assert url.geturl().startswith(f"{origin}/{TENANT}/oauth2/v2.0/authorize?")
         request = {name: values[0] for name, values in parse_qs(url.query).items()}
         assert request["redirect_uri"] == server.origin + CALLBACK
-        assert request["scope"] == "openid"
+        assert set(request["scope"].split()) == {"openid", "profile"}
         assert json.loads(request["claims"]) == {"id_token": {"acrs": {"essential": True, "value": "c1"}}}
         assert "HttpOnly" in headers["Set-Cookie"] and "SameSite=Lax" in headers["Set-Cookie"]
         return request, headers["Set-Cookie"].split(";", 1)[0]

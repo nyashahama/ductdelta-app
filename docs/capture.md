@@ -68,7 +68,7 @@ Run `python3 scripts/check_email_sign_in.py` to verify delivery, enrollment, sig
 
 ### Microsoft Entra sign-in and company MFA
 
-Register a multitenant web application for Microsoft Entra organizational accounts. Add the exact deployed HTTPS URL ending in `/api/account/sso/callback` as a Web redirect URI. Store the application ID in `DUCTDELTA_ENTRA_CLIENT_ID` and its credential in `DUCTDELTA_ENTRA_CLIENT_SECRET`. Apply migration 0022 before configuring a company. The browser signs in through Microsoft using authorization code flow with PKCE. DuctDelta verifies the signed ID token and looks up the linked tenant and user object. Each user first needs an existing DuctDelta company membership and verified sign-in email.
+Register a multitenant web application for Microsoft Entra organizational accounts. Add the exact deployed HTTPS URL ending in `/api/account/sso/callback` as a Web redirect URI. Store the application ID in `DUCTDELTA_ENTRA_CLIENT_ID` and its credential in `DUCTDELTA_ENTRA_CLIENT_SECRET`. Apply migration 0022 before configuring a company. The browser signs in through Microsoft using authorization code flow with PKCE. The `openid` and `profile` scopes provide the signed ID token and the user object ID used for the link. Each user first needs an existing DuctDelta company membership and verified sign-in email. [Microsoft ID token claims](https://learn.microsoft.com/en-us/entra/identity-platform/id-token-claims-reference)
 
 A deployment operator with `ductdelta_company_bootstrap` can configure the company's tenant and link each DuctDelta actor to the verified Entra directory object ID. Look up the IDs through the authorized company roster and tenant directory before linking. Replace the placeholders in these PostgreSQL commands.
 

@@ -15,7 +15,7 @@ use openidconnect::core::{
 use openidconnect::{
     AdditionalClaims, AuthType, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
     EndpointNotSet, EndpointSet, IdToken, IssuerUrl, JsonWebKeySetUrl, Nonce, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, TokenResponse, TokenUrl,
+    PkceCodeVerifier, RedirectUrl, Scope, TokenResponse, TokenUrl,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -189,7 +189,8 @@ async fn start(
             || state,
             || nonce,
         )
-        .set_pkce_challenge(challenge);
+        .set_pkce_challenge(challenge)
+        .add_scope(Scope::new("profile".into()));
     if let Some(context) = context {
         request = request.add_extra_param(
             "claims",
