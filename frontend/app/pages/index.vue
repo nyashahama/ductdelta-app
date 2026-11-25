@@ -234,6 +234,14 @@ watch([() => project.value?.id, view, period, version], ([id, page], _, onCleanu
         </p>
         <template v-else>
           <HomeStats :data="data" />
+          <HomeFollowUps
+            :key="project.id"
+            :project="project.id"
+            :version="version"
+            @open="openCase"
+            @observation="openObservation"
+            @session-expired="expire"
+          />
           <HomeChart :activity="data.activity" />
           <HomeCases :cases="data.cases" @open="openCase" @register="openCase()" />
         </template>

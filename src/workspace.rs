@@ -346,6 +346,8 @@ async fn health(State(workspace): State<Workspace>) -> StatusCode {
                             'ductdelta.web_verify_email_code(uuid,bytea,bytea)', 'EXECUTE')
                         AND has_function_privilege(
                             'ductdelta.web_entra_login(uuid,uuid,uuid,text,bytea,integer)', 'EXECUTE')
+                        AND has_function_privilege(
+                            'ductdelta.web_project_follow_ups(bytea,uuid,integer)', 'EXECUTE')
                         AND ($1 OR NOT ductdelta.web_entra_configured())
                         AND to_regprocedure('ductdelta.limit_email_invites_per_account()') IS NOT NULL
                      FROM pg_catalog.pg_roles WHERE rolname = current_user",
