@@ -1,4 +1,6 @@
 export type ActivityDay = { day: string, observations: number, cases: number }
+export const activityPeriods = [7, 14, 30] as const
+export type ActivityPeriod = (typeof activityPeriods)[number]
 export type RecentCase = {
   id: string
   title: string
@@ -17,6 +19,31 @@ export type Overview = {
   cases: RecentCase[]
   notices: Notice[]
 }
+
+export type FollowUpAction
+  = | { kind: 'review' }
+    | { kind: 'notice' | 'revised_notice', reference: string, due_at: string | null, notice_id: string, copy_id: string | null, version: number | null }
+    | { kind: 'instruction' | 'quote' }
+    | { kind: 'quote_decision', amount: string, reference: string }
+    | { kind: 'quote_lines', count: number }
+    | { kind: 'uncertified', amount: string, reference: string | null }
+    | { kind: 'application', reference: string }
+    | { kind: 'collect' | 'credit' | 'retention' | 'unallocated', amount: string }
+
+export type FollowUpCase = {
+  id: string
+  title: string
+  actions: [FollowUpAction, ...FollowUpAction[]]
+  evidence: {
+    observation_id: string | null
+    references: { kind: 'instruction' | 'quote' | 'application' | 'certificate', reference: string }[]
+    unpaid_certificates: string[]
+    file_count: number
+    files: { id: string, filename: string, access_class: 'site' | 'finance' }[]
+  }
+}
+
+export type FollowUpPage = { cases: FollowUpCase[], has_more: boolean }
 
 const deadline = new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })
 export function formatDeadline(value: string) {

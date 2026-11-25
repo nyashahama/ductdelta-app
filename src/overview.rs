@@ -11,13 +11,24 @@ use uuid::Uuid;
 use crate::workspace::{Rejection, Reply, Workspace, session};
 
 pub(crate) fn routes() -> Router<Workspace> {
-    Router::new().route("/api/projects/{project}/overview", routing::get(load))
+    Router::new()
+        .route("/api/projects/{project}/overview", routing::get(load))
+        .route(
+            "/api/projects/{project}/follow-ups",
+            routing::get(follow_ups),
+        )
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct OverviewQuery {
     days: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FollowUpQuery {
+    page: Option<i32>,
 }
 
 async fn load(
@@ -41,6 +52,32 @@ async fn load(
                 .query_one(
                     "SELECT ductdelta.web_project_overview($1, $2, $3)",
                     &[&digest, &project, &days],
+                )?
+                .try_get(0)
+        })
+        .await?;
+    Ok(Json(result))
+}
+
+async fn follow_ups(
+    State(workspace): State<Workspace>,
+    Path(project): Path<Uuid>,
+    query: Result<Query<FollowUpQuery>, QueryRejection>,
+    headers: HeaderMap,
+) -> Reply<Json<Value>> {
+    let digest = session(&headers)?;
+    let invalid_page = || Rejection::invalid("Choose a positive page number.");
+    let Query(query) = query.map_err(|_| invalid_page())?;
+    let page = query.page.unwrap_or(1);
+    if page < 1 {
+        return Err(invalid_page());
+    }
+    let result = workspace
+        .query(move |database| {
+            database
+                .query_one(
+                    "SELECT ductdelta.web_project_follow_ups($1, $2, $3)",
+                    &[&digest, &project, &page],
                 )?
                 .try_get(0)
         })
