@@ -31,7 +31,7 @@ export type FollowUpAction
 export type FollowUpCase = {
   id: string
   title: string
-  actions: FollowUpAction[]
+  actions: [FollowUpAction, ...FollowUpAction[]]
   evidence: {
     observation_id: string | null
     references: { kind: 'instruction' | 'quote' | 'application' | 'certificate', reference: string }[]

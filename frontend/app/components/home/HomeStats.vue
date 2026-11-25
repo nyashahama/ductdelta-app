@@ -1,13 +1,9 @@
 <script setup lang="ts">
+import { formatDecimal } from '~/components/cases/case-data'
 import type { Overview } from '~/types/overview'
 
 const props = defineProps<{ data: Overview }>()
 const integer = new Intl.NumberFormat('en-ZA')
-
-function money(value: string) {
-  const [whole, decimal] = value.split('.')
-  return 'R ' + (whole ?? '0').replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (decimal ? '.' + decimal : '')
-}
 
 const stats = computed(() => [
   {
@@ -34,7 +30,7 @@ const stats = computed(() => [
         key: 'outstanding',
         title: 'Net certified balance',
         icon: 'i-lucide-banknote',
-        value: money(props.data.financial.outstanding),
+        value: 'R ' + formatDecimal(props.data.financial.outstanding),
         description: 'Receivables less credits, excl. VAT'
       }
     : {
@@ -47,28 +43,23 @@ const stats = computed(() => [
 </script>
 
 <template>
-  <UPageGrid class="grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-px">
-    <UPageCard
+  <dl aria-label="Project totals" class="grid shrink-0 grid-cols-2 gap-px overflow-hidden rounded-xl border border-default bg-border lg:grid-cols-4">
+    <div
       v-for="stat in stats"
       :key="stat.key"
       :data-metric="stat.key"
-      :icon="stat.icon"
-      :title="stat.title"
-      variant="subtle"
-      :ui="{
-        container: 'gap-y-1.5 p-3 sm:p-6',
-        wrapper: 'items-start',
-        leading: 'p-2.5 rounded-full bg-primary/10 ring ring-inset ring-primary/25 flex-col',
-        title: 'font-normal text-muted text-xs uppercase'
-      }"
-      class="lg:rounded-none first:rounded-l-lg last:rounded-r-lg"
+      class="min-w-0 bg-default px-3 py-3.5 sm:px-5"
     >
-      <strong class="text-xl sm:text-2xl font-semibold text-highlighted break-words tabular-nums">
+      <dt class="flex items-center gap-2 text-xs font-medium text-toned">
+        <UIcon :name="stat.icon" class="size-4 shrink-0 text-primary" aria-hidden="true" />
+        {{ stat.title }}
+      </dt>
+      <dd class="mt-1.5 text-[1.625rem] leading-none font-semibold tracking-tight wrap-anywhere text-highlighted tabular-nums">
         {{ stat.value }}
-      </strong>
-      <p v-if="stat.description" class="text-xs text-muted">
+      </dd>
+      <dd v-if="stat.description" class="mt-1 text-xs text-muted">
         {{ stat.description }}
-      </p>
-    </UPageCard>
-  </UPageGrid>
+      </dd>
+    </div>
+  </dl>
 </template>

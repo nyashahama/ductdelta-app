@@ -239,6 +239,7 @@ watch([() => project.value?.id, view, period, version], ([id, page], _, onCleanu
             :project="project.id"
             :version="version"
             @open="openCase"
+            @register="openCase()"
             @observation="openObservation"
             @session-expired="expire"
           />

@@ -16,7 +16,7 @@ The application will use exact decimal money, explicit currency and tax basis wh
 
 Open **Overview → Change follow-ups** to review open cases. Notices due within the dashboard's seven-day window come first. Commercial and finance users see agreed value still to certify, net certified balance, retention held and quote decisions. Where a payment is outstanding, the list shows references for up to three unpaid certificates after credits and matched receipts. The amounts come from recorded case activity and use ZAR excluding VAT. Check the payment terms before treating a balance as overdue.
 
-Open a case or source observation from the list, or download an evidence file directly. The dashboard uses the same access rules as the case. Finance-only files and unmatched cash stay within the finance grant. Download an issued notice version to send via the project's agreed service method and record dispatch on the case. A revised notice follow-up does not reuse the original deadline once a dispatch is recorded. Run `python3 scripts/check_overview.py` against the disposable PostgreSQL workspace to verify the list.
+Select a case in the queue to see its actions and evidence. Use **Open case** to record an action, or open the source observation and download files from the dashboard. The dashboard uses the same access rules as the case. Finance-only files and unmatched cash stay within the finance grant. Download an issued notice version to send via the project's agreed service method and record dispatch on the case. A revised notice follow-up does not reuse the original deadline once a dispatch is recorded. Run `python3 scripts/check_overview.py` against the disposable PostgreSQL workspace to verify the list.
 
 ## Production acceptance
 

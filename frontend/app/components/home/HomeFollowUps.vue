@@ -1,33 +1,20 @@
 <script setup lang="ts">
-import { casePath, formatDecimal } from '~/components/cases/case-data'
-import { formatDeadline, type FollowUpAction, type FollowUpPage } from '~/types/overview'
+import { useMediaQuery } from '@vueuse/core'
+import type { FollowUpPage } from '~/types/overview'
 import { api, reportError } from '~/utils/api'
+import { followUpActions } from './follow-up-action'
 
 const props = defineProps<{ project: string, version: number }>()
-const emit = defineEmits<{ open: [id: string], observation: [id: string], sessionExpired: [] }>()
+const emit = defineEmits<{ open: [id: string], register: [], observation: [id: string], sessionExpired: [] }>()
 const page = ref(1)
 const attempt = ref(0)
 const result = shallowRef<FollowUpPage>()
 const loading = ref(true)
 const error = ref('')
 
-const actionLabels = {
-  notice: 'Send or record notice dispatch',
-  revised_notice: 'Send or record dispatch of revised notice',
-  instruction: 'Confirm written instruction',
-  quote: 'Prepare quote',
-  quote_decision: 'Follow up on quote decision',
-  quote_lines: 'Resolve open or disputed quote lines',
-  uncertified: 'Review value still to certify',
-  application: 'Check certification of payment application',
-  collect: 'Check certified payment',
-  credit: 'Reconcile certificate credit',
-  retention: 'Track retention release',
-  unallocated: 'Match cash receipts',
-  review: 'Review open case'
-} satisfies Record<FollowUpAction['kind'], string>
-
-const referenceLabels = { instruction: 'Instruction', quote: 'Quote', application: 'Application', certificate: 'Certificate' }
+const wide = useMediaQuery('(min-width: 64rem)')
+const selectedId = ref<string>()
+const selected = computed(() => result.value?.cases.find(item => item.id === selectedId.value) ?? result.value?.cases[0])
 
 watch([page, attempt, () => props.version], async ([requestedPage], _, onCleanup) => {
   const controller = new AbortController()
@@ -50,150 +37,149 @@ watch([page, attempt, () => props.version], async ([requestedPage], _, onCleanup
     if (!controller.signal.aborted) loading.value = false
   }
 }, { immediate: true })
-
-function actionLabel(action: FollowUpAction) {
-  return action.kind === 'uncertified' && action.reference ? 'Follow up on certification' : actionLabels[action.kind]
-}
 </script>
 
 <template>
-  <section aria-labelledby="change-follow-ups" :aria-busy="loading" class="min-w-0 space-y-3">
-    <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-      <h2 id="change-follow-ups" class="font-semibold text-highlighted">
-        Change follow-ups
-      </h2>
-      <span v-if="result?.cases.some(item => item.actions.some(action => 'amount' in action && action.amount != null))" class="text-xs text-muted">
-        ZAR excl. VAT
-      </span>
-    </div>
+  <section
+    aria-labelledby="change-follow-ups"
+    :aria-busy="loading"
+    class="min-w-0 shrink-0 overflow-hidden rounded-2xl border border-default bg-default shadow-sm"
+  >
+    <header data-follow-up-header class="relative isolate flex flex-wrap items-center justify-between gap-3 border-b border-default px-4 py-4 sm:px-6">
+      <div class="flex min-w-0 items-center gap-3">
+        <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/25 sm:size-11">
+          <UIcon name="i-lucide-list-checks" class="size-5" aria-hidden="true" />
+        </span>
+        <h2 id="change-follow-ups" class="text-lg leading-tight font-semibold tracking-tight text-highlighted sm:text-2xl">
+          Change follow-ups
+        </h2>
+      </div>
+      <UButton
+        color="neutral"
+        variant="outline"
+        size="sm"
+        aria-label="Case register"
+        trailing-icon="i-lucide-arrow-up-right"
+        class="rounded-lg bg-default"
+        @click="emit('register')"
+      >
+        <span class="sm:hidden">Register</span>
+        <span class="hidden sm:inline">Case register</span>
+      </UButton>
+    </header>
 
-    <UAlert
-      v-if="error"
-      role="alert"
-      color="error"
-      variant="subtle"
-      :title="error"
-    >
-      <template #actions>
-        <UButton
-          color="neutral"
-          variant="outline"
-          label="Retry follow-ups"
-          @click="attempt++"
-        />
-      </template>
-    </UAlert>
-    <p v-else-if="!result" role="status" class="text-sm text-muted">
+    <div v-if="error" class="p-4 sm:p-6">
+      <UAlert
+        role="alert"
+        color="error"
+        variant="subtle"
+        :title="error"
+      >
+        <template #actions>
+          <UButton
+            color="neutral"
+            variant="outline"
+            label="Retry follow-ups"
+            @click="attempt++"
+          />
+        </template>
+      </UAlert>
+    </div>
+    <p v-else-if="!result" role="status" class="p-6 text-sm text-muted">
       Loading change follow-ups…
     </p>
-    <p v-else-if="!result.cases.length" class="rounded-lg border border-default p-4 text-sm text-muted">
-      No open change cases to follow up.
-    </p>
-    <template v-else>
-      <ul class="divide-y divide-default rounded-lg border border-default">
-        <li v-for="item in result.cases" :key="item.id" class="grid min-w-0 gap-3 px-4 py-3 lg:grid-cols-3 lg:gap-4">
-          <h3 class="min-w-0">
-            <UButton
-              color="neutral"
-              variant="link"
-              class="p-0 text-left font-semibold whitespace-normal wrap-anywhere text-highlighted"
-              trailing-icon="i-lucide-arrow-up-right"
-              :label="item.title"
-              @click="emit('open', item.id)"
-            />
-          </h3>
-          <ul aria-label="Follow-up actions" class="min-w-0 space-y-2 text-sm">
-            <li v-for="action in item.actions" :key="action.kind" class="wrap-anywhere">
-              <span class="font-medium text-highlighted">{{ actionLabel(action) }}</span>
-              <strong v-if="'amount' in action && action.amount != null" class="ms-2 whitespace-nowrap tabular-nums">
-                R {{ formatDecimal(action.amount) }}
-              </strong>
-              <span v-if="action.kind === 'quote_lines'" class="ms-2 text-muted">{{ action.count }}</span>
-              <span v-if="action.kind === 'notice' || action.kind === 'revised_notice' || action.kind === 'application'" class="block text-xs text-muted">
-                {{ action.reference }}<template v-if="action.kind === 'notice' && action.due_at"> · Due {{ formatDeadline(action.due_at) }}</template>
+    <div v-else-if="!result.cases.length" class="flex items-center gap-3 p-6">
+      <span class="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+        <UIcon name="i-lucide-check" class="size-5" aria-hidden="true" />
+      </span>
+      <p class="text-sm font-medium text-highlighted">
+        No open change cases to follow up.
+      </p>
+    </div>
+    <div v-else class="lg:grid lg:grid-cols-[minmax(14rem,0.85fr)_minmax(0,2fr)]">
+      <div class="min-w-0 bg-elevated/30 lg:border-e lg:border-default">
+        <h3 class="px-4 pt-4 pb-2 text-xs font-semibold tracking-wide text-toned lg:px-5">
+          Case queue
+        </h3>
+        <ul aria-label="Case queue" class="space-y-0.5 px-2 pb-3 sm:px-3">
+          <li v-for="item in result.cases" :key="item.id" class="min-w-0">
+            <button
+              type="button"
+              :aria-pressed="selected?.id === item.id"
+              class="group flex w-full min-w-0 items-center gap-3 rounded-lg border border-transparent px-2.5 py-2 text-left transition-colors hover:bg-elevated focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary aria-pressed:border-primary/25 aria-pressed:bg-primary/10 sm:px-3"
+              @click="selectedId = item.id"
+            >
+              <span :class="followUpActions[item.actions[0].kind].tone" class="grid size-8 shrink-0 place-items-center rounded-lg">
+                <UIcon :name="followUpActions[item.actions[0].kind].icon" class="size-4" aria-hidden="true" />
               </span>
-              <p v-if="action.kind === 'uncertified' && action.reference" class="text-xs text-muted">
-                Agreed balance · Recorded application {{ action.reference }}
-              </p>
-              <p v-if="action.kind === 'collect' && item.evidence.unpaid_certificates.length" class="text-xs text-muted">
-                {{ item.evidence.unpaid_certificates.length === 1 ? 'Unpaid certificate' : 'Unpaid certificates' }} · {{ item.evidence.unpaid_certificates.join(', ') }}
-              </p>
-              <UButton
-                v-if="(action.kind === 'notice' || action.kind === 'revised_notice') && action.copy_id"
-                external
-                color="primary"
-                variant="link"
-                class="block p-0 text-left whitespace-normal"
-                :to="`${casePath(project, item.id)}/notices/${action.notice_id}/copies/${action.copy_id}/download`"
-                :label="`Download notice version ${action.version}`"
+              <span class="min-w-0 flex-1">
+                <span class="block text-sm leading-5 font-medium wrap-anywhere text-highlighted">{{ item.title }}</span>
+                <span class="block text-xs leading-5 text-muted">
+                  {{ followUpActions[item.actions[0].kind].stage }}<template v-if="item.actions.length > 1"> · {{ item.actions.length }} actions</template>
+                </span>
+              </span>
+              <UIcon
+                :name="selected?.id === item.id && !wide ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                class="size-4 shrink-0 text-dimmed group-aria-pressed:text-primary"
+                aria-hidden="true"
               />
-            </li>
-          </ul>
-          <div
-            v-if="item.evidence.observation_id || item.evidence.references.length || item.evidence.file_count"
-            class="min-w-0 space-y-1 text-xs text-muted"
-          >
-            <h4 class="font-medium text-highlighted">
-              Evidence on file
-            </h4>
-            <p v-if="item.evidence.references.length" class="wrap-anywhere">
-              {{ item.evidence.references.map(record => `${referenceLabels[record.kind]} ${record.reference}`).join(' · ') }}
-            </p>
-            <UButton
-              v-if="item.evidence.observation_id"
-              color="primary"
-              variant="link"
-              size="xs"
-              label="Source observation"
-              class="block p-0 text-left"
-              @click="emit('observation', item.evidence.observation_id)"
-            />
-            <ul v-if="item.evidence.files.length" class="space-y-1">
-              <li v-for="file in item.evidence.files" :key="file.id" class="flex flex-wrap items-baseline gap-x-2">
-                <UButton
-                  external
-                  color="primary"
-                  variant="link"
-                  size="xs"
-                  :label="file.filename"
-                  :aria-label="`Download ${file.filename}`"
-                  :to="`${casePath(project, item.id)}/files/${file.id}`"
-                  class="max-w-full p-0 text-left whitespace-normal wrap-anywhere"
-                />
-                <span v-if="file.access_class === 'finance'">Finance only</span>
-              </li>
-            </ul>
-            <UButton
-              v-if="item.evidence.file_count > item.evidence.files.length"
-              color="primary"
-              variant="link"
-              size="xs"
-              class="p-0"
-              :label="`All ${item.evidence.file_count} files in case`"
-              @click="emit('open', item.id)"
-            />
-          </div>
-        </li>
-      </ul>
-      <nav v-if="page > 1 || result.has_more" aria-label="Change follow-up pages" class="flex items-center justify-end gap-2">
-        <UButton
-          size="xs"
-          color="neutral"
-          variant="outline"
-          :disabled="loading || page === 1"
-          label="Previous"
-          @click="page--"
-        />
-        <span class="text-xs text-muted" role="status">Page {{ page }}</span>
-        <UButton
-          size="xs"
-          color="neutral"
-          variant="outline"
-          :disabled="loading || !result.has_more"
-          label="Next"
-          @click="page++"
-        />
-      </nav>
-    </template>
+            </button>
+            <div v-if="!wide && selected?.id === item.id" class="my-2 overflow-hidden rounded-xl border border-default">
+              <HomeFollowUpDetail
+                :project="project"
+                :item="item"
+                @open="emit('open', $event)"
+                @observation="emit('observation', $event)"
+              />
+            </div>
+          </li>
+        </ul>
+        <nav v-if="page > 1 || result.has_more" aria-label="Change follow-up pages" class="flex items-center justify-between gap-2 border-t border-default px-3 py-2.5">
+          <UButton
+            size="sm"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-chevron-left"
+            :disabled="loading || page === 1"
+            label="Previous"
+            @click="page--"
+          />
+          <span class="text-xs text-muted" role="status">Page {{ page }}</span>
+          <UButton
+            size="sm"
+            color="neutral"
+            variant="ghost"
+            trailing-icon="i-lucide-chevron-right"
+            :disabled="loading || !result.has_more"
+            label="Next"
+            @click="page++"
+          />
+        </nav>
+      </div>
+      <HomeFollowUpDetail
+        v-if="wide && selected"
+        :project="project"
+        :item="selected"
+        @open="emit('open', $event)"
+        @observation="emit('observation', $event)"
+      />
+    </div>
   </section>
 </template>
+
+<style scoped>
+[data-follow-up-header] {
+  background: linear-gradient(104deg, color-mix(in srgb, var(--ui-primary) 10%, var(--ui-bg)), var(--ui-bg) 65%);
+}
+
+[data-follow-up-header]::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 0 30%;
+  background-image: radial-gradient(color-mix(in srgb, var(--ui-primary) 32%, transparent) 0.7px, transparent 0.7px);
+  background-size: 10px 10px;
+  mask-image: linear-gradient(to left, #000 5%, transparent 96%);
+  content: '';
+  pointer-events: none;
+}
+</style>
