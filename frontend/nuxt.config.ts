@@ -3,7 +3,7 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   app: { head: { title: 'DuctDelta Workspace', htmlAttrs: { lang: 'en' } } },
   css: ['~/assets/css/main.css'],
-  colorMode: { preference: 'dark', fallback: 'dark' },
+  colorMode: { preference: 'light', fallback: 'light' },
   ui: {
     fonts: false,
     eslint: {

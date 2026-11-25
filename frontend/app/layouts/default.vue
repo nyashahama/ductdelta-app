@@ -172,25 +172,32 @@ onMounted(async () => {
       v-model:open="open"
       collapsible
       resizable
-      class="bg-elevated/25"
-      :ui="{ footer: 'lg:border-t lg:border-default' }"
+      class="workspace-sidebar"
+      :ui="{
+        header: 'workspace-sidebar-heading px-4',
+        body: 'workspace-sidebar-menu px-3',
+        content: 'workspace-sidebar',
+        footer: 'lg:border-t lg:border-default'
+      }"
     >
       <template #header="{ collapsed }">
+        <WorkspaceBrand :compact="collapsed" :class="{ 'justify-center': collapsed }" />
+      </template>
+
+      <template #default="{ collapsed }">
         <TeamsMenu
           :collapsed="collapsed"
           :project="project"
           :projects="projects"
           @select="selectProject"
         />
-      </template>
-
-      <template #default="{ collapsed }">
         <UDashboardSearchButton :collapsed="collapsed" class="bg-transparent ring-default" />
         <UNavigationMenu
           :collapsed="collapsed"
           :items="links"
           orientation="vertical"
           tooltip
+          :ui="{ link: 'min-h-10 rounded-lg' }"
         />
       </template>
 

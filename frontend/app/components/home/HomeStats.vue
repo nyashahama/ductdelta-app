@@ -47,28 +47,25 @@ const stats = computed(() => [
 </script>
 
 <template>
-  <UPageGrid class="grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-px">
-    <UPageCard
+  <dl class="workspace-metrics" aria-label="Project summary">
+    <div
       v-for="stat in stats"
       :key="stat.key"
       :data-metric="stat.key"
-      :icon="stat.icon"
-      :title="stat.title"
-      variant="subtle"
-      :ui="{
-        container: 'gap-y-1.5 p-3 sm:p-6',
-        wrapper: 'items-start',
-        leading: 'p-2.5 rounded-full bg-primary/10 ring ring-inset ring-primary/25 flex-col',
-        title: 'font-normal text-muted text-xs uppercase'
-      }"
-      class="lg:rounded-none first:rounded-l-lg last:rounded-r-lg"
+      class="workspace-panel workspace-metric"
     >
-      <strong class="text-xl sm:text-2xl font-semibold text-highlighted break-words tabular-nums">
-        {{ stat.value }}
-      </strong>
-      <p v-if="stat.description" class="text-xs text-muted">
-        {{ stat.description }}
-      </p>
-    </UPageCard>
-  </UPageGrid>
+      <dt class="workspace-metric-heading text-sm font-medium text-muted">
+        {{ stat.title }}
+        <span class="workspace-metric-icon" aria-hidden="true">
+          <UIcon :name="stat.icon" class="size-4" />
+        </span>
+      </dt>
+      <dd>
+        <strong class="workspace-metric-value">{{ stat.value }}</strong>
+        <p v-if="stat.description" class="mt-0.5 text-xs text-muted">
+          {{ stat.description }}
+        </p>
+      </dd>
+    </div>
+  </dl>
 </template>

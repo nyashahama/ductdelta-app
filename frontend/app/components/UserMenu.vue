@@ -47,7 +47,7 @@ const items = computed<DropdownMenuItem[][]>(() => [[{
   >
     <UButton
       :aria-label="`Account menu, ${name}`"
-      :avatar="{ alt: name, size: '2xs' }"
+      icon="i-lucide-circle-user-round"
       :label="collapsed ? undefined : name"
       :trailing-icon="collapsed ? undefined : 'i-lucide-chevrons-up-down'"
       color="neutral"

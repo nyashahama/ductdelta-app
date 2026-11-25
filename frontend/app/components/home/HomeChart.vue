@@ -15,19 +15,18 @@ const description = computed(() => `Change activity, last ${props.activity.lengt
 </script>
 
 <template>
-  <UCard :ui="{ root: 'min-w-0 overflow-visible', body: 'p-0! overflow-hidden rounded-b-[inherit]' }">
-    <template #header>
-      <div class="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 class="text-xs text-muted uppercase mb-1.5">
-            Change activity
-          </h2>
-          <p class="text-3xl text-highlighted font-semibold">
-            {{ integer.format(total) }} <span class="text-sm font-normal text-muted">observations</span>
-          </p>
-        </div>
+  <section class="workspace-panel" aria-labelledby="change-activity-heading">
+    <header class="flex flex-wrap items-start justify-between gap-3 px-4 py-3 sm:px-5">
+      <div>
+        <h2 id="change-activity-heading" class="text-base font-semibold text-highlighted">
+          Change activity
+        </h2>
+        <p class="mt-1 text-2xl text-highlighted font-semibold">
+          {{ integer.format(total) }} <span class="text-sm font-normal text-muted">observations</span>
+        </p>
       </div>
-    </template>
+      <slot name="controls" />
+    </header>
 
     <UChart
       type="area"
@@ -36,17 +35,16 @@ const description = computed(() => `Change activity, last ${props.activity.lengt
       index="date"
       :categories="[
         { key: 'observations', label: 'Observations', color: 'var(--ui-primary)' },
-        { key: 'cases', label: 'Cases opened', color: 'var(--ui-info)' }
+        { key: 'cases', label: 'Cases opened', color: 'var(--workspace-activity-cases)' }
       ]"
       :x-axis="false"
       :y-axis="false"
       :grid="true"
       :format="(value: number) => integer.format(value)"
-      :aspect-ratio="3"
-      :initial-width="1152"
-      class="-my-px"
+      :aspect-ratio="2.7"
+      :initial-width="448"
+      class="border-t border-default"
       :aria-label="description"
-      role="img"
     />
 
     <details class="border-t border-default p-3 text-sm text-muted">
@@ -74,5 +72,5 @@ const description = computed(() => `Change activity, last ${props.activity.lengt
         </tbody>
       </table>
     </details>
-  </UCard>
+  </section>
 </template>

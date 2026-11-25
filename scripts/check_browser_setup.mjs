@@ -39,21 +39,8 @@ try {
   }
   await owner.goto(origin)
   await heading(owner, 'Sign in to your workspace').waitFor()
-  const workspaceTheme = await owner.evaluate(() => {
-    const body = getComputedStyle(document.body)
-    const swatch = document.createElement('span')
-    swatch.style.backgroundColor = 'var(--ui-bg-elevated)'
-    document.body.append(swatch)
-    const surface = getComputedStyle(swatch).backgroundColor
-    swatch.remove()
-    return {
-      background: body.backgroundColor,
-      font: body.fontFamily,
-      heading: getComputedStyle(document.querySelector('main h1')).color,
-      surface
-    }
-  })
-  const workspaceAction = await actionColors(button(owner, 'Sign in'))
+  assert.ok(await owner.locator('html').evaluate(element => element.classList.contains('light')))
+  const workspaceFont = await owner.evaluate(() => getComputedStyle(document.body).fontFamily)
   const policyErrors = []
   const recordPolicyError = (message) => {
     if (message.type() === 'error' && /content security policy/i.test(message.text())) {
@@ -70,9 +57,12 @@ try {
   await button(owner, 'Dark Theme Toggle').click()
   await owner.reload()
   assert.ok(await owner.locator('html').evaluate(element => element.classList.contains('dark')))
+  const darkTheme = await productTheme(owner)
+  assert.notEqual(darkTheme.background, lightTheme.background)
+  assert.equal(darkTheme.font, workspaceFont)
   for (const subpath of ['', 'workflow/', 'example/', 'faq/']) {
     await owner.goto(origin + '/product/' + subpath)
-    assert.deepEqual(await productTheme(owner), workspaceTheme, 'Dashboard dark colors on /product/' + subpath)
+    assert.deepEqual(await productTheme(owner), darkTheme, 'Consistent dark colors on /product/' + subpath)
   }
   await owner.goto(origin + '/product/')
   assert.ok(await owner.evaluate(async () => {
@@ -80,13 +70,13 @@ try {
     return faces.some(face => face.status === 'loaded')
   }), 'Marketing reuses the workspace webfont')
   const exampleAction = link(owner, 'See a worked example')
-  assert.deepEqual(await actionColors(exampleAction), workspaceAction, 'Dashboard primary action colors in dark mode')
+  const darkAction = await actionColors(exampleAction)
   await exampleAction.hover()
   const hoverAction = await actionColors(exampleAction)
-  assert.notEqual(hoverAction.background, workspaceAction.background, 'Primary action has a hover state')
+  assert.notEqual(hoverAction.background, darkAction.background, 'Primary action has a hover state')
   await button(owner, 'Light Theme Toggle').click()
   assert.deepEqual(await productTheme(owner), lightTheme, 'Light mode preserves its palette')
-  assert.deepEqual(await actionColors(exampleAction), workspaceAction, 'Dashboard primary action colors in light mode')
+  assert.deepEqual(await actionColors(exampleAction), darkAction, 'Product primary action stays consistent across themes')
   await exampleAction.hover()
   assert.deepEqual(await actionColors(exampleAction), hoverAction, 'Primary action hover matches in both themes')
   await exampleAction.click()

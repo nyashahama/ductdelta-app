@@ -9,7 +9,7 @@ import CaptureObservation from '~/components/observations/CaptureObservation.vue
 import { api, reportError } from '~/utils/api'
 import { formatDeadline, type Overview } from '~/types/overview'
 
-const { session, project, projects, view, unavailableProject, error, expire, loadProjects, target } = useWorkspace()
+const { session, companies, project, projects, view, unavailableProject, error, expire, loadProjects, target } = useWorkspace()
 const route = useRoute()
 const period = ref<7 | 14 | 30>(14)
 const periods = [7, 14, 30] as const
@@ -20,6 +20,7 @@ const version = ref(0)
 const captureProject = ref<string>()
 const source = ref<{ project: string, id: string }>()
 const showNotices = ref(false)
+const companyAdmin = computed(() => companies.value.some(company => company.role === 'admin'))
 
 const title = computed(() => ({
   'overview': 'Project overview',
@@ -97,9 +98,9 @@ watch([() => project.value?.id, view, period, version], ([id, page], _, onCleanu
 </script>
 
 <template>
-  <UDashboardPanel id="home" :ui="{ body: 'gap-4 sm:gap-6' }">
+  <UDashboardPanel id="home" :ui="{ body: 'workspace-dashboard-body gap-4 px-4 py-5 sm:p-6 xl:p-7' }">
     <template #header>
-      <UDashboardNavbar :title="title" :ui="{ right: 'gap-3' }">
+      <UDashboardNavbar :title="title" class="workspace-navbar" :ui="{ right: 'gap-2' }">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
@@ -153,33 +154,16 @@ watch([() => project.value?.id, view, period, version], ([id, page], _, onCleanu
               </ul>
             </template>
           </USlideover>
-          <UTooltip v-if="project?.permission === 'capture' && view === 'overview'" text="New observation">
-            <UButton
-              icon="i-lucide-plus"
-              aria-label="New observation"
-              class="rounded-full"
-              @click="beginCapture"
-            />
-          </UTooltip>
+          <UButton
+            v-if="project?.permission === 'capture' && view === 'overview'"
+            icon="i-lucide-plus"
+            aria-label="New observation"
+            :ui="{ label: 'hidden sm:inline' }"
+            label="New observation"
+            @click="beginCapture"
+          />
         </template>
       </UDashboardNavbar>
-
-      <UDashboardToolbar v-if="project && view === 'overview'">
-        <template #left>
-          <span class="shrink-0 text-sm text-muted">Activity</span>
-          <UFieldGroup role="group" aria-label="Activity range" :aria-busy="loading">
-            <UButton
-              v-for="days in periods"
-              :key="days"
-              :label="`${days} days`"
-              color="neutral"
-              :variant="period === days ? 'soft' : 'outline'"
-              :aria-pressed="period === days"
-              @click="period = days"
-            />
-          </UFieldGroup>
-        </template>
-      </UDashboardToolbar>
     </template>
 
     <template #body>
@@ -209,10 +193,35 @@ watch([() => project.value?.id, view, period, version], ([id, page], _, onCleanu
         variant="subtle"
         title="This project is unavailable. Select a project to continue."
       />
-      <p v-else-if="!project" role="status" class="text-muted">
-        {{ projects ? 'Your account has no assigned projects.' : 'Loading projects…' }}
-      </p>
+      <template v-else-if="!project">
+        <section v-if="projects" class="workspace-panel workspace-empty" aria-labelledby="no-project-heading">
+          <div class="workspace-empty-icon" aria-hidden="true">
+            <UIcon name="i-lucide-folder-open" class="size-5" />
+          </div>
+          <h2 id="no-project-heading" class="mt-4 text-xl font-semibold text-highlighted">
+            {{ companyAdmin ? 'Set up your first project' : 'Your account has no assigned projects.' }}
+          </h2>
+          <p v-if="companyAdmin" class="mt-2 text-muted">
+            Create a project for your team in Company settings.
+          </p>
+          <p v-else class="mt-2 text-muted">
+            Ask your company administrator for project access.
+          </p>
+          <UButton
+            v-if="companyAdmin"
+            class="mt-4"
+            :to="target('company')"
+            label="Create a project"
+          />
+        </section>
+        <p v-else role="status" class="text-muted">
+          Loading projects…
+        </p>
+      </template>
       <template v-else-if="view === 'overview'">
+        <h2 class="workspace-project-heading text-2xl sm:text-3xl">
+          {{ project.name }}
+        </h2>
         <UAlert
           v-if="overviewError"
           role="alert"
@@ -234,8 +243,24 @@ watch([() => project.value?.id, view, period, version], ([id, page], _, onCleanu
         </p>
         <template v-else>
           <HomeStats :data="data" />
-          <HomeChart :activity="data.activity" />
-          <HomeCases :cases="data.cases" @open="openCase" @register="openCase()" />
+          <div class="workspace-overview-grid">
+            <HomeCases :cases="data.cases" @open="openCase" @register="openCase()" />
+            <HomeChart :activity="data.activity">
+              <template #controls>
+                <UFieldGroup role="group" aria-label="Activity range" :aria-busy="loading">
+                  <UButton
+                    v-for="days in periods"
+                    :key="days"
+                    :label="`${days} days`"
+                    :color="period === days ? 'primary' : 'neutral'"
+                    :variant="period === days ? 'soft' : 'outline'"
+                    :aria-pressed="period === days"
+                    @click="period = days"
+                  />
+                </UFieldGroup>
+              </template>
+            </HomeChart>
+          </div>
         </template>
       </template>
       <ObservationWorkspace

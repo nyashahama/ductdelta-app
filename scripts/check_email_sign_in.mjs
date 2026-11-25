@@ -67,6 +67,9 @@ try {
   assert.equal(await field(owner, 'Company setup code').count(), 0)
   await enterEmail(owner, 'browser-owner@example.test', { reload: true })
   await heading(owner, 'Projects').waitFor()
+  await owner.goto(origin)
+  await owner.getByRole('link', { name: 'Create a project', exact: true }).click({ timeout: 4000 })
+  await heading(owner, 'Projects').waitFor()
   await field(owner, 'Project name').fill('Browser plantroom')
   await button(owner, 'Create project').click()
   await owner.getByRole('link', { name: 'Browser plantroom', exact: true }).waitFor()
@@ -82,6 +85,7 @@ try {
   await member.waitForFunction(() => !location.hash)
   await enterEmail(member, 'browser-member@example.test', { reload: true })
   await member.getByText('Your account has no assigned projects.', { exact: true }).waitFor()
+  assert.equal(await member.getByRole('link', { name: 'Create a project', exact: true }).count(), 0)
   assert.equal((await (await member.request.get(origin + '/api/session')).json()).name, 'Mobile Member')
   assert.ok(await member.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
 

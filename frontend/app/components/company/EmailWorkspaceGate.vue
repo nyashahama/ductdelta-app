@@ -2,6 +2,7 @@
 import { ApiError, api, requestJson } from '~/utils/api'
 import { useTimeoutFn } from '@vueuse/core'
 import CompanySignInButton from '~/components/company/CompanySignInButton.vue'
+import WorkspaceEntryShell from '~/components/company/WorkspaceEntryShell.vue'
 
 const props = defineProps<{ invitation: string, savedKey?: string, recovery?: boolean }>()
 const emit = defineEmits<{ done: [], cancel: [] }>()
@@ -198,18 +199,11 @@ async function submit() {
 </script>
 
 <template>
-  <main class="min-h-dvh grid place-items-center p-4">
-    <UCard class="w-full max-w-md" aria-labelledby="workspace-gate-title">
-      <template #header>
-        <div class="flex items-center gap-2 text-highlighted font-semibold">
-          <UIcon name="i-lucide-triangle" class="size-5 text-primary" />
-          DuctDelta
-        </div>
-      </template>
-
-      <h1 id="workspace-gate-title" class="text-2xl font-semibold text-highlighted">
-        {{ title }}
-      </h1>
+  <WorkspaceEntryShell :title="title">
+    <template #default>
+      <p v-if="purpose === 'sign_in' && !challenge" class="mt-3 text-muted">
+        We’ll email you a sign-in code.
+      </p>
 
       <UAlert
         v-if="route.query.sso_error"
@@ -240,7 +234,7 @@ async function submit() {
           />
         </template>
       </UAlert>
-      <form v-else class="mt-4 flex flex-col gap-3" @submit.prevent="submit">
+      <form v-else class="mt-6 flex flex-col gap-4" @submit.prevent="submit">
         <template v-if="challenge">
           <p class="text-muted" role="status">
             Check {{ email }} for an eight-digit code. It expires 10 minutes after you request it.
@@ -357,6 +351,7 @@ async function submit() {
         </template>
         <UButton
           type="submit"
+          class="workspace-entry-primary"
           :label="challenge ? 'Continue' : 'Email me a code'"
           block
           :loading="pending"
@@ -373,7 +368,7 @@ async function submit() {
         :title="error || signInError"
       />
 
-      <div class="mt-4 flex flex-wrap gap-2 justify-between">
+      <div class="workspace-entry-options flex flex-wrap gap-2 justify-between">
         <UButton
           v-if="challenge && !verified"
           label="Change email"
@@ -407,34 +402,45 @@ async function submit() {
           @click="changeMode('sign_in'); emit('cancel')"
         />
         <template v-else-if="purpose === 'sign_in' && !challenge">
-          <UButton
-            label="Create a company"
-            color="neutral"
-            variant="link"
-            :disabled="pending"
-            @click="changeMode('company')"
-          />
-          <UButton
-            label="Use an existing key"
-            color="neutral"
-            variant="link"
-            :disabled="pending"
-            @click="changeMode('upgrade')"
-          />
-          <UButton
-            label="Recover account"
-            color="neutral"
-            variant="link"
-            :disabled="pending"
-            @click="changeMode('recover')"
-          />
-          <UButton
-            label="About DuctDelta"
-            color="neutral"
-            variant="link"
-            to="/product/"
-            external
-          />
+          <div class="w-full">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <p class="text-sm text-muted">
+                New to DuctDelta?
+              </p>
+              <UButton
+                label="Create a company"
+                variant="soft"
+                :disabled="pending"
+                @click="changeMode('company')"
+              />
+            </div>
+            <div class="mt-3 flex flex-wrap gap-x-4">
+              <UButton
+                label="Use an existing key"
+                color="neutral"
+                variant="link"
+                class="px-0 text-muted"
+                :disabled="pending"
+                @click="changeMode('upgrade')"
+              />
+              <UButton
+                label="Recover account"
+                color="neutral"
+                variant="link"
+                class="px-0 text-muted"
+                :disabled="pending"
+                @click="changeMode('recover')"
+              />
+              <UButton
+                label="About DuctDelta"
+                color="neutral"
+                variant="link"
+                class="px-0 text-muted"
+                to="/product/"
+                external
+              />
+            </div>
+          </div>
         </template>
         <UButton
           v-else-if="!verified"
@@ -445,6 +451,6 @@ async function submit() {
           @click="backToSignIn"
         />
       </div>
-    </UCard>
-  </main>
+    </template>
+  </WorkspaceEntryShell>
 </template>

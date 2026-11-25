@@ -49,7 +49,7 @@ class Shell(HTMLParser):
             else:
                 self.script_type = attributes.get("type", "").split(";", 1)[0].strip().lower()
                 self.script = []
-        if tag == "link" and attributes.get("rel") in ("stylesheet", "modulepreload", "preload"):
+        if tag == "link" and attributes.get("rel") in ("stylesheet", "modulepreload", "preload", "icon"):
             asset = attributes.get("href", "")
             if asset.startswith(("/_nuxt/", "/product/_astro/")):
                 self.assets.add(asset)
