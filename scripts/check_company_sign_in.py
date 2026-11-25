@@ -175,16 +175,16 @@ def check(server, messages, origin, grants):
         grants[code] = (request, overrides)
         callback = CALLBACK + "?" + urlencode({"state": request["state"], "code": code})
         wrong_browser = server.request(callback, expected=303)[1]
-        assert wrong_browser["Location"] == "/?view=security&sso_error=1"
+        assert wrong_browser["Location"] == "/workspace/?view=security&sso_error=1"
         assert wrong_browser.get_all("Set-Cookie") is None
         _, headers = server.request(callback, cookie=cookie, expected=303)
         if overrides:
-            assert headers["Location"] == "/?view=security&sso_error=1"
+            assert headers["Location"] == "/workspace/?view=security&sso_error=1"
             assert headers.get_all("Set-Cookie") is None
         else:
-            assert headers["Location"] == "/"
+            assert headers["Location"] == "/workspace/"
             session, = [item.split(";", 1)[0] for item in headers.get_all("Set-Cookie") if item.startswith("dd_session=")]
-            assert server.request(callback, cookie=cookie, expected=303)[1]["Location"] == "/?view=security&sso_error=1"
+            assert server.request(callback, cookie=cookie, expected=303)[1]["Location"] == "/workspace/?view=security&sso_error=1"
     assert server.request("/api/session", cookie=session)[0]["name"] == "Entra Owner"
     server.request(f"/api/companies/{company}/team", cookie=session)
     server.request(f"/api/companies/{other}/team", cookie=session, expected=403)
@@ -207,7 +207,7 @@ if __name__ == "__main__":
     parser.add_argument("--browser", action="store_true")
     browser = parser.parse_args().browser
     frontend = ROOT / "frontend/.output/public" if browser else None
-    if browser and (not os.environ.get("DUCTDELTA_PLAYWRIGHT_MODULE") or not (frontend / "index.html").is_file()):
+    if browser and (not os.environ.get("DUCTDELTA_PLAYWRIGHT_MODULE") or not (frontend / "workspace/index.html").is_file()):
         raise SystemExit("Build the frontend and set DUCTDELTA_PLAYWRIGHT_MODULE before running the browser check.")
 
     with entra_provider() as (origin, grants), provider() as (url, messages, release), workspace(frontend=frontend, service_env={

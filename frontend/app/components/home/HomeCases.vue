@@ -16,15 +16,13 @@ const recorded = new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium', timeZon
 </script>
 
 <template>
-  <section aria-labelledby="recent-open-cases">
-    <div class="mb-3 flex flex-wrap justify-between items-center gap-2">
-      <h2 id="recent-open-cases" class="font-semibold text-highlighted">
+  <section class="workspace-panel" aria-labelledby="recent-open-cases">
+    <div class="flex flex-wrap justify-between items-center gap-2 px-4 py-3 sm:px-5">
+      <h2 id="recent-open-cases" class="text-base font-semibold text-highlighted">
         Recent open cases
       </h2>
       <UButton
-        variant="ghost"
-        color="neutral"
-        trailing-icon="i-lucide-arrow-right"
+        variant="link"
         label="View case register"
         @click="emit('register')"
       />
@@ -35,11 +33,10 @@ const recorded = new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium', timeZon
       class="shrink-0"
       empty="There are no open change cases on this project."
       :ui="{
-        base: 'table-fixed border-separate border-spacing-0',
-        thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-        tbody: '[&>tr]:last:[&>td]:border-b-0',
-        th: 'first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r whitespace-normal max-sm:first:w-3/5 max-sm:nth-3:hidden max-sm:last:hidden',
-        td: 'border-b border-default wrap-anywhere whitespace-normal max-sm:nth-3:hidden max-sm:last:hidden'
+        base: 'table-fixed',
+        thead: '[&>tr]:bg-muted [&>tr]:after:content-none',
+        th: 'whitespace-normal first:w-2/5 max-sm:first:w-3/5 max-sm:nth-3:hidden max-sm:last:hidden',
+        td: 'wrap-anywhere whitespace-normal max-sm:nth-3:hidden max-sm:last:hidden'
       }"
     >
       <template #title-cell="{ row }">
@@ -50,6 +47,9 @@ const recorded = new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium', timeZon
           :label="row.original.title"
           @click="emit('open', row.original.id)"
         />
+        <p v-if="row.original.notice_due_at" class="mt-1 text-xs text-muted sm:hidden">
+          Notice due {{ formatDeadline(row.original.notice_due_at) }}
+        </p>
       </template>
       <template #has_instruction-cell="{ row }">
         <UBadge :color="row.original.has_instruction ? 'success' : 'warning'" variant="subtle">

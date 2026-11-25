@@ -132,7 +132,7 @@ onMounted(load)
             label="Change sign-in email"
             color="neutral"
             variant="outline"
-            :to="{ path: '/', query: { view: 'security', recover: '1' } }"
+            :to="{ path: '/workspace/', query: { view: 'security', recover: '1' } }"
           />
         </div>
       </UCard>

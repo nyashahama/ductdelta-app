@@ -238,7 +238,7 @@ if __name__ == "__main__":
     browser = parser.parse_args().browser
     frontend = ROOT / "frontend/.output/public" if browser else None
     if browser and (
-        not os.environ.get("DUCTDELTA_PLAYWRIGHT_MODULE") or not (frontend / "index.html").is_file()
+        not os.environ.get("DUCTDELTA_PLAYWRIGHT_MODULE") or not (frontend / "workspace/index.html").is_file()
     ):
         raise SystemExit("Build the frontend and set DUCTDELTA_PLAYWRIGHT_MODULE before running the browser check.")
     with provider() as (url, messages, release), workspace(frontend=frontend, service_env={

@@ -8,11 +8,11 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::Path;
-use axum::http::StatusCode;
+use axum::extract::{OriginalUri, Path, State};
 use axum::http::header;
 use axum::http::header::HeaderValue;
-use axum::response::{Html, IntoResponse, Response};
+use axum::http::{StatusCode, Uri};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing;
 
 use crate::workspace::Workspace;
@@ -30,7 +30,7 @@ struct Frontend {
 
 impl Frontend {
     fn load(directory: &FilePath) -> Result<Self, &'static str> {
-        let shell = read_file(&directory.join("index.html")).map_err(
+        let shell = read_file(&directory.join("workspace/index.html")).map_err(
             |_| "Build the Nuxt workspace and set DUCTDELTA_WEB_DIST to .output/public.",
         )?;
         // Nuxt UI uses inline attributes for component sizing and transitions.
@@ -154,6 +154,9 @@ fn media_type(name: &str) -> Option<&'static str> {
         "otf" => Some("font/otf"),
         "avif" => Some("image/avif"),
         "webp" => Some("image/webp"),
+        "png" => Some("image/png"),
+        "txt" => Some("text/plain; charset=utf-8"),
+        "xml" => Some("application/xml; charset=utf-8"),
         _ => None,
     }
 }
@@ -169,61 +172,178 @@ fn cached_asset(asset: &Asset) -> Response {
         .into_response()
 }
 
-fn product_routes(directory: &FilePath) -> Result<Router<Workspace>, &'static str> {
-    let policy = content_policy(directory, "; form-action 'none'")?;
-    let assets_directory = directory.join("_astro");
-    if !fs::symlink_metadata(&assets_directory).is_ok_and(|metadata| metadata.is_dir()) {
-        return Err("Product assets are missing. Rebuild the frontend.");
+#[derive(Clone)]
+struct PublicPage {
+    html: Bytes,
+    policy: HeaderValue,
+}
+
+impl PublicPage {
+    fn load(directory: &FilePath, file: &str) -> Result<Self, &'static str> {
+        let html = read_file(&directory.join(file)).map_err(|_| "A marketing page is missing.")?;
+        let policy = read_hashes(&directory.join(format!("{file}.csp")))?;
+        let policy = HeaderValue::from_str(policy.trim_end())
+            .map_err(|_| "A marketing page has an invalid content policy.")?;
+        Ok(Self {
+            html: html.into(),
+            policy,
+        })
     }
+
+    fn response(&self, indexable: bool) -> Response {
+        let mut response = (
+            [
+                (header::CONTENT_SECURITY_POLICY, self.policy.clone()),
+                (
+                    header::REFERRER_POLICY,
+                    HeaderValue::from_static("strict-origin-when-cross-origin"),
+                ),
+            ],
+            Html(self.html.clone()),
+        )
+            .into_response();
+        if !indexable {
+            response
+                .headers_mut()
+                .insert("x-robots-tag", HeaderValue::from_static("noindex, follow"));
+        }
+        response
+    }
+}
+
+fn with_query(path: &str, uri: &Uri) -> String {
+    match uri.query() {
+        Some(query) => format!("{path}?{query}"),
+        None => path.to_owned(),
+    }
+}
+
+fn old_workspace_link(uri: &Uri) -> bool {
+    uri.query().is_some_and(|query| {
+        query.split('&').any(|part| {
+            let name = part.split_once('=').map_or(part, |(name, _)| name);
+            matches!(
+                name,
+                "project" | "view" | "caseId" | "observationId" | "recover" | "sso" | "sso_error"
+            )
+        })
+    })
+}
+
+fn marketing_routes(
+    directory: &FilePath,
+    legacy_product: &FilePath,
+) -> Result<Router<Workspace>, &'static str> {
+    let home = PublicPage::load(directory, "index.html")?;
+    let missing = PublicPage::load(directory, "404.html")?;
     let mut assets = HashMap::new();
-    load_assets(&assets_directory, "", &mut assets)?;
-    if assets.is_empty() {
-        return Err("The public product pages have no compiled assets.");
-    }
-    let licenses = Bytes::from(
-        read_file(&directory.join("licenses.txt"))
-            .map_err(|_| "Product license notices are missing. Rebuild the frontend.")?,
-    );
+    load_assets(directory, "", &mut assets)?;
     let assets = Arc::new(assets);
+    let root_files = Arc::clone(&assets);
+    let scripts = Arc::clone(&assets);
+    let mut legacy = HashMap::new();
+    load_assets(&legacy_product.join("_astro"), "", &mut legacy)?;
+    let legacy = Arc::new(legacy);
+
+    let home_alias = routing::get(|OriginalUri(uri): OriginalUri| async move {
+        Redirect::permanent(&with_query("/", &uri))
+    });
     let mut router = Router::new()
+        .route(
+            "/",
+            routing::get(move |State(workspace): State<Workspace>, OriginalUri(uri): OriginalUri| async move {
+                if old_workspace_link(&uri) {
+                    return (
+                        StatusCode::FOUND,
+                        [(header::LOCATION, with_query("/workspace/", &uri))],
+                    )
+                        .into_response();
+                }
+                home.response(workspace.origin() == "https://ductdelta.com")
+            }),
+        )
+        .route("/product", home_alias.clone())
+        .route("/product/", home_alias)
+        .route(
+            "/product/healthz",
+            routing::get(|| async { StatusCode::NO_CONTENT }),
+        )
+        .route(
+            "/product/sitemap.xml",
+            routing::get(|OriginalUri(uri): OriginalUri| async move {
+                Redirect::permanent(&with_query("/sitemap.xml", &uri))
+            }),
+        )
+        // Pages from the previous release can still have these cached asset URLs.
         .route(
             "/product/_astro/{*path}",
             routing::get(move |Path(path): Path<String>| async move {
-                match assets.get(&path) {
-                    Some(asset) => cached_asset(asset),
-                    None => StatusCode::NOT_FOUND.into_response(),
-                }
+                legacy
+                    .get(&path)
+                    .map_or_else(|| StatusCode::NOT_FOUND.into_response(), cached_asset)
             }),
         )
         .route(
-            "/product/licenses.txt",
-            routing::get(move || async move {
-                (
-                    [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-                    licenses,
-                )
+            "/_next/static/{*path}",
+            routing::get(move |Path(path): Path<String>| async move {
+                scripts
+                    .get(&format!("_next/static/{path}"))
+                    .map_or_else(|| StatusCode::NOT_FOUND.into_response(), cached_asset)
+            }),
+        )
+        .route(
+            "/{file}",
+            routing::get(move |Path(file): Path<String>| async move {
+                public_asset(root_files.get(&file))
+            }),
+        )
+        .route(
+            "/product/{*path}",
+            routing::get(move |Path(path): Path<String>| async move {
+                match assets.get(&format!("product/{path}")) {
+                    Some(asset) => public_asset(Some(asset)),
+                    None if path.starts_with("media/") => StatusCode::NOT_FOUND.into_response(),
+                    None => (StatusCode::NOT_FOUND, missing.response(false)).into_response(),
+                }
             }),
         );
 
     for (path, file) in [
-        ("/product", "index.html"),
-        ("/product/workflow", "workflow/index.html"),
-        ("/product/example", "example/index.html"),
-        ("/product/faq", "faq/index.html"),
+        ("/product/workflow", "product/workflow/index.html"),
+        ("/product/example", "product/example/index.html"),
+        ("/product/faq", "product/faq/index.html"),
     ] {
-        let html = Bytes::from(
-            read_file(&directory.join(file))
-                .map_err(|_| "A public product page is missing. Rebuild the frontend.")?,
-        );
-        let policy = policy.clone();
-        let page = routing::get(move || async move {
-            ([(header::CONTENT_SECURITY_POLICY, policy)], Html(html))
-        });
+        let page = PublicPage::load(directory, file)?;
+        let canonical = format!("{path}/");
         router = router
-            .route(path, page.clone())
-            .route(&format!("{path}/"), page);
+            .route(
+                path,
+                routing::get({
+                    let canonical = canonical.clone();
+                    move |OriginalUri(uri): OriginalUri| async move {
+                        Redirect::permanent(&with_query(&canonical, &uri))
+                    }
+                }),
+            )
+            .route(
+                &canonical,
+                routing::get(move |State(workspace): State<Workspace>| async move {
+                    page.response(workspace.origin() == "https://ductdelta.com")
+                }),
+            );
     }
     Ok(router)
+}
+
+fn public_asset(asset: Option<&Asset>) -> Response {
+    match asset {
+        Some(asset) => (
+            [(header::CONTENT_TYPE, asset.media_type)],
+            asset.bytes.clone(),
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 pub(crate) fn routes() -> Result<Router<Workspace>, &'static str> {
@@ -240,12 +360,18 @@ pub(crate) fn routes() -> Result<Router<Workspace>, &'static str> {
     };
 
     let directory = PathBuf::from(directory);
-    let product = product_routes(&directory.join("product"))?;
+    let marketing = marketing_routes(&directory.join("marketing"), &directory.join("product"))?;
     let frontend = Arc::new(Frontend::load(&directory)?);
     let page = Arc::clone(&frontend);
     Ok(Router::new()
         .route(
-            "/",
+            "/workspace",
+            routing::get(|OriginalUri(uri): OriginalUri| async move {
+                Redirect::permanent(&with_query("/workspace/", &uri))
+            }),
+        )
+        .route(
+            "/workspace/",
             routing::get(move || async move {
                 (
                     [(header::CONTENT_SECURITY_POLICY, page.policy.clone())],
@@ -253,7 +379,7 @@ pub(crate) fn routes() -> Result<Router<Workspace>, &'static str> {
                 )
             }),
         )
-        .merge(product)
+        .merge(marketing)
         .route(
             "/_nuxt/{*path}",
             routing::get(move |Path(path): Path<String>| async move {

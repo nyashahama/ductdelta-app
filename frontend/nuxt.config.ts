@@ -3,7 +3,7 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   app: { head: { title: 'DuctDelta Workspace', htmlAttrs: { lang: 'en' } } },
   css: ['~/assets/css/main.css'],
-  colorMode: { preference: 'dark', fallback: 'dark' },
+  colorMode: { preference: 'light', fallback: 'light' },
   ui: {
     fonts: false,
     eslint: {
@@ -16,6 +16,7 @@ export default defineNuxtConfig({
   },
   experimental: { appManifest: false, payloadExtraction: false },
   compatibilityDate: '2026-06-30',
+  nitro: { prerender: { routes: ['/workspace/'] } },
   eslint: { config: { stylistic: { commaDangle: 'never', braceStyle: '1tbs' } } },
   icon: {
     mode: 'svg',

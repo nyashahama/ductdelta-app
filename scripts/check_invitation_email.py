@@ -99,7 +99,7 @@ def verify(server, requests, release):
     assert message["from"] == "DuctDelta <invites@example.test>"
     assert message["to"] == [first["email"]] and "Basin & <Mechanical>" in message["text"]
     url, = [line for line in message["text"].splitlines() if line.startswith(server.origin)]
-    assert url.startswith(server.origin + "/#invite=")
+    assert url.startswith(server.origin + "/workspace/#invite=")
     assert message.get("reply_to") == "support@example.test", "Invitation replies must reach support"
     html = message["html"]
     assert "Basin &amp; &lt;Mechanical&gt;" in html and "<Mechanical>" not in html

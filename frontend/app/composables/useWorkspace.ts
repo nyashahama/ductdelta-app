@@ -31,7 +31,7 @@ export function useWorkspace() {
 
   function target(next: WorkspaceView, projectId = project.value?.id ?? requestedProject.value, id?: string) {
     return {
-      path: '/',
+      path: '/workspace/',
       query: {
         project: next === 'company' || next === 'sessions' || next === 'security' ? undefined : projectId,
         view: next === 'overview' ? undefined : next,
@@ -117,7 +117,7 @@ export function useWorkspace() {
     try {
       await api<undefined>('/api/session', { method: 'DELETE' })
       endSession()
-      await router.replace('/')
+      await router.replace('/workspace/')
     } catch (cause) {
       error.value = reportError(cause, expire)
     } finally {

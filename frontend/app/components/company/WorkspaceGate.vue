@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkspaceEntryShell from '~/components/company/WorkspaceEntryShell.vue'
 import { ApiError, api, requestJson } from '~/utils/api'
 
 const props = defineProps<{ invitation: string, pendingKeys: string[] }>()
@@ -85,7 +86,7 @@ async function finish() {
   error.value = ''
   try {
     await refreshSession()
-    if (openedCompany.value) await navigateTo({ path: '/', query: { view: 'company' } }, { replace: true })
+    if (openedCompany.value) await navigateTo({ path: '/workspace/', query: { view: 'company' } }, { replace: true })
     if (keys.value) emit('done')
     else emit('joined')
   } catch {
@@ -177,19 +178,8 @@ async function submit() {
 </script>
 
 <template>
-  <main class="min-h-dvh grid place-items-center p-4">
-    <UCard class="w-full max-w-md" aria-labelledby="workspace-gate-title">
-      <template #header>
-        <div class="flex items-center gap-2 text-highlighted font-semibold">
-          <UIcon name="i-lucide-triangle" class="size-5 text-primary" />
-          DuctDelta
-        </div>
-      </template>
-
-      <h1 id="workspace-gate-title" class="text-2xl font-semibold text-highlighted">
-        {{ title }}
-      </h1>
-
+  <WorkspaceEntryShell :title="title">
+    <template #default>
       <template v-if="keys">
         <p class="mt-2 text-muted">
           Store your access key in a password manager. Keep your recovery key somewhere safe for use if you lose access.
@@ -336,6 +326,7 @@ async function submit() {
         </template>
         <UButton
           type="submit"
+          class="workspace-entry-primary"
           :label="invitation ? (joiningWithExistingAccount ? 'Sign in' : 'Accept invitation') : ({ 'sign-in': 'Sign in', 'company': 'Create company', 'recover': 'Recover account' })[mode]"
           block
           :loading="pending || signing"
@@ -370,11 +361,10 @@ async function submit() {
             @click="cancelInvitation"
           />
         </div>
-        <div v-else-if="mode === 'sign-in'" class="mt-4 flex flex-wrap gap-2 justify-between">
+        <div v-else-if="mode === 'sign-in'" class="workspace-entry-options flex flex-wrap gap-2 justify-between">
           <UButton
             label="Create a company"
-            color="neutral"
-            variant="link"
+            variant="soft"
             @click="changeMode('company')"
           />
           <UButton
@@ -387,7 +377,7 @@ async function submit() {
             label="About DuctDelta"
             color="neutral"
             variant="link"
-            to="/product/"
+            to="/"
             external
           />
         </div>
@@ -408,6 +398,6 @@ async function submit() {
           @click="emit('done')"
         />
       </template>
-    </UCard>
-  </main>
+    </template>
+  </WorkspaceEntryShell>
 </template>

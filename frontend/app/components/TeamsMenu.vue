@@ -25,21 +25,19 @@ const items = computed<DropdownMenuItem[][]>(() => [[{
     :ui="{ content: collapsed ? 'w-48' : 'w-(--reka-dropdown-menu-trigger-width)' }"
   >
     <UButton
-      aria-label="Select project"
+      :aria-label="project ? `Select project, ${project.name}` : 'Select project'"
       :disabled="!projects?.length"
-      icon="i-lucide-triangle"
+      icon="i-lucide-folder"
       :trailing-icon="collapsed ? undefined : 'i-lucide-chevrons-up-down'"
       color="neutral"
-      variant="ghost"
+      variant="outline"
       block
       :square="collapsed"
-      class="data-[state=open]:bg-elevated"
-      :class="{ 'py-2': !collapsed }"
+      class="min-h-10 data-[state=open]:bg-elevated"
       :ui="{ label: 'truncate', trailingIcon: 'text-dimmed' }"
     >
       <span v-if="!collapsed" class="min-w-0 text-left">
-        <span class="block font-semibold text-highlighted">DuctDelta</span>
-        <span class="block truncate text-xs text-muted">{{ project?.name ?? (projects ? 'Select a project' : 'Loading projects…') }}</span>
+        <span class="block truncate font-medium text-highlighted">{{ project?.name ?? (projects ? 'Select a project' : 'Loading projects…') }}</span>
       </span>
     </UButton>
   </UDropdownMenu>

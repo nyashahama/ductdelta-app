@@ -13,7 +13,7 @@ try {
   await page.goto(origin + '/?sso=' + company)
   await page.getByRole('button', { name: 'Sign in with Microsoft', exact: true }).click()
   await page.getByRole('heading', { name: 'Project overview', exact: true }).waitFor()
-  assert.equal(page.url(), origin + '/')
+  assert.equal(page.url(), origin + '/workspace/')
   const team = await page.request.get(origin + '/api/companies/' + company + '/team')
   assert.equal(team.status(), 200)
   await page.goto(origin + '/?view=security')

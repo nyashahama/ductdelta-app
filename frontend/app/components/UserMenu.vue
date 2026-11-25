@@ -24,12 +24,12 @@ const items = computed<DropdownMenuItem[][]>(() => [[{
 }], [{
   label: 'Account sessions',
   icon: 'i-lucide-monitor',
-  to: { path: '/', query: { view: 'sessions' } },
+  to: { path: '/workspace/', query: { view: 'sessions' } },
   onSelect: () => emit('open-sessions')
 }, {
   label: 'Account security',
   icon: 'i-lucide-shield',
-  to: { path: '/', query: { view: 'security' } },
+  to: { path: '/workspace/', query: { view: 'security' } },
   onSelect: () => emit('open-sessions')
 }], [{
   label: 'Sign out',
@@ -47,7 +47,7 @@ const items = computed<DropdownMenuItem[][]>(() => [[{
   >
     <UButton
       :aria-label="`Account menu, ${name}`"
-      :avatar="{ alt: name, size: '2xs' }"
+      icon="i-lucide-circle-user-round"
       :label="collapsed ? undefined : name"
       :trailing-icon="collapsed ? undefined : 'i-lucide-chevrons-up-down'"
       color="neutral"
