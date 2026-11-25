@@ -7,12 +7,11 @@ import ProjectNoticeRules from '~/components/cases/ProjectNoticeRules.vue'
 import ObservationWorkspace from '~/components/observations/ObservationWorkspace.vue'
 import CaptureObservation from '~/components/observations/CaptureObservation.vue'
 import { api, reportError } from '~/utils/api'
-import { formatDeadline, type Overview } from '~/types/overview'
+import { formatDeadline, type ActivityPeriod, type Overview } from '~/types/overview'
 
 const { session, project, projects, view, unavailableProject, error, expire, loadProjects, target } = useWorkspace()
 const route = useRoute()
-const period = ref<7 | 14 | 30>(14)
-const periods = [7, 14, 30] as const
+const period = ref<ActivityPeriod>(14)
 const data = shallowRef<Overview>()
 const overviewError = ref('')
 const loading = ref(false)
@@ -163,23 +162,6 @@ watch([() => project.value?.id, view, period, version], ([id, page], _, onCleanu
           </UTooltip>
         </template>
       </UDashboardNavbar>
-
-      <UDashboardToolbar v-if="project && view === 'overview'">
-        <template #left>
-          <span class="shrink-0 text-sm text-muted">Activity</span>
-          <UFieldGroup role="group" aria-label="Activity range" :aria-busy="loading">
-            <UButton
-              v-for="days in periods"
-              :key="days"
-              :label="`${days} days`"
-              color="neutral"
-              :variant="period === days ? 'soft' : 'outline'"
-              :aria-pressed="period === days"
-              @click="period = days"
-            />
-          </UFieldGroup>
-        </template>
-      </UDashboardToolbar>
     </template>
 
     <template #body>
@@ -243,7 +225,7 @@ watch([() => project.value?.id, view, period, version], ([id, page], _, onCleanu
             @observation="openObservation"
             @session-expired="expire"
           />
-          <HomeChart :activity="data.activity" />
+          <HomeChart v-model:period="period" :activity="data.activity" :loading="loading" />
           <HomeCases :cases="data.cases" @open="openCase" @register="openCase()" />
         </template>
       </template>

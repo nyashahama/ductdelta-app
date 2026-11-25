@@ -1,4 +1,6 @@
 export type ActivityDay = { day: string, observations: number, cases: number }
+export const activityPeriods = [7, 14, 30] as const
+export type ActivityPeriod = (typeof activityPeriods)[number]
 export type RecentCase = {
   id: string
   title: string

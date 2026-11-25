@@ -21,3 +21,12 @@ export const followUpActions = {
   unallocated: { label: 'Match cash receipts', stage: 'Cash to match', icon: 'i-lucide-banknote', tone: payment },
   review: { label: 'Review open case', stage: 'Case review', icon: 'i-lucide-folder', tone: neutral }
 } satisfies Record<FollowUpAction['kind'], { label: string, stage: string, icon: string, tone: string }>
+
+export function noticeUrgency(action: FollowUpAction, now: Date) {
+  if (action.kind !== 'notice' || !action.due_at) return undefined
+  const due = Date.parse(action.due_at)
+  if (due <= now.getTime()) return { label: 'Overdue', color: 'error' } as const
+  // The overview uses the rest of today and the next seven UTC days.
+  const cutoff = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 8)
+  if (due < cutoff) return { label: 'Due soon', color: 'warning' } as const
+}

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { casePath, formatDecimal } from '~/components/cases/case-data'
 import { formatDeadline, type FollowUpAction, type FollowUpCase } from '~/types/overview'
-import { followUpActions } from './follow-up-action'
+import { followUpActions, type noticeUrgency } from './follow-up-action'
 
-const props = defineProps<{ project: string, item: FollowUpCase }>()
+const props = defineProps<{ project: string, item: FollowUpCase, urgency?: ReturnType<typeof noticeUrgency> }>()
 const emit = defineEmits<{ open: [id: string], observation: [id: string] }>()
 const filesPath = computed(() => casePath(props.project, props.item.id))
 const evidence = computed(() => props.item.evidence)
@@ -42,7 +42,16 @@ function actionLabel(action: FollowUpAction) {
         <span :class="followUpActions[action.kind].tone" class="row-span-2 grid size-8 place-items-center rounded-lg">
           <UIcon :name="followUpActions[action.kind].icon" class="size-4" aria-hidden="true" />
         </span>
-        <span class="col-start-2 row-start-1 text-sm font-semibold wrap-anywhere text-highlighted">{{ actionLabel(action) }}</span>
+        <div class="col-start-2 row-start-1 flex flex-wrap items-center gap-2 text-sm font-semibold wrap-anywhere text-highlighted">
+          <span>{{ actionLabel(action) }}</span>
+          <UBadge
+            v-if="action.kind === 'notice' && urgency"
+            :color="urgency.color"
+            :label="urgency.label"
+            size="sm"
+            variant="soft"
+          />
+        </div>
         <strong
           v-if="'amount' in action && action.amount != null"
           class="col-start-3 row-start-1 max-w-24 text-right text-base font-semibold tracking-tight wrap-anywhere text-highlighted tabular-nums sm:max-w-56 sm:text-lg"
