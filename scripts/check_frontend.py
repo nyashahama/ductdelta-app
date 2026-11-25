@@ -21,6 +21,7 @@ ASSET_TYPES = {
     ".otf": "font/otf",
     ".avif": "image/avif",
     ".webp": "image/webp",
+    ".png": "image/png",
 }
 SCRIPT_TYPES = {
     "", "module", "importmap", "speculationrules",
@@ -51,10 +52,11 @@ class Shell(HTMLParser):
                 self.script = []
         if tag == "link" and attributes.get("rel") in ("stylesheet", "modulepreload", "preload", "icon"):
             asset = attributes.get("href", "")
-            if asset.startswith(("/_nuxt/", "/product/_astro/")):
+            if asset.startswith(("/_nuxt/", "/_next/", "/product/")):
                 self.assets.add(asset)
         if tag == "img":
             self.assets.add(attributes["src"])
+        if tag in ("img", "source"):
             for source in attributes.get("srcset", "").split(","):
                 if source.strip():
                     self.assets.add(source.split()[0])
@@ -82,8 +84,13 @@ class Shell(HTMLParser):
 
 
 def verify(server, public_dir):
-    body, headers = server.request("/")
-    assert body == (public_dir / "index.html").read_bytes()
+    landing, _ = server.request("/")
+    assert b"Every change." in landing, "The home URL must serve the approved landing page"
+    assert server.request("/?project=old&view=cases", expected=302)[1]["Location"] == "/workspace/?project=old&view=cases"
+    assert server.request("/product/?utm_campaign=old", expected=308)[1]["Location"] == "/?utm_campaign=old"
+    assert server.request("/workspace", expected=308)[1]["Location"] == "/workspace/"
+    body, headers = server.request("/workspace/")
+    assert body == (public_dir / "workspace/index.html").read_bytes()
     assert headers["Content-Type"] == "text/html; charset=utf-8"
     assert headers["Cache-Control"] == "no-store"
     policy = headers["Content-Security-Policy"]
@@ -141,71 +148,74 @@ def verify(server, public_dir):
     server.request("/api/projects", expected=401)
     print("PASS: Nuxt shell, exact bootstrap receipt, typed immutable assets and protected same-origin API")
 
-    verify_product(server, public_dir / "product", policy)
+    verify_marketing(server, public_dir / "marketing", policy)
 
 
-def verify_product(server, product_dir, workspace_policy):
-    scripts = set()
-    styles = set()
-    references = set()
+def verify_marketing(server, marketing_dir, workspace_policy):
     pages = {
-        "": b"Keep mechanical changes",
-        "workflow/": b"From site observation to closeout",
-        "example/": b"Why this change stays open",
-        "faq/": b"Certificates, receipts and closeout",
+        "/": "index.html",
+        "/product/workflow/": "product/workflow/index.html",
+        "/product/example/": "product/example/index.html",
+        "/product/faq/": "product/faq/index.html",
     }
-    script_receipt = set((product_dir / "script-hashes.txt").read_text().splitlines())
-    style_receipt = set((product_dir / "style-hashes.txt").read_text().splitlines())
-    for path, expected in pages.items():
-        url = f"/product/{path}"
+    references = set()
+    for url, file in pages.items():
         page, headers = server.request(url)
-        assert page == (product_dir / path / "index.html").read_bytes(), url
-        assert expected in page, url
-        assert re.search(rb'<a\b[^>]*href="/"[^>]*>Open workspace</a>', page), url
-        assert f'<link rel="canonical" href="https://ductdelta.com{url}">'.encode() in page
-        assert b"noindex" not in page
+        assert page == (marketing_dir / file).read_bytes(), url
+        assert b'href="/workspace/"' in page
+        assert f'rel="canonical" href="https://ductdelta.com{url}"'.encode() in page
         assert headers["Content-Type"] == "text/html; charset=utf-8"
         assert headers["Cache-Control"] == "no-store"
-        assert server.request(url.rstrip("/"))[0] == page
+        assert headers["X-Robots-Tag"] == "noindex, follow"
+        if url != "/":
+            alias = url.rstrip("/") + "?utm_source=release&ref=a%2Fb"
+            assert server.request(alias, expected=308)[1]["Location"] == url + "?utm_source=release&ref=a%2Fb"
         policy = headers["Content-Security-Policy"]
         assert policy != workspace_policy
         directives = dict(directive.strip().split(" ", 1) for directive in policy.split(";"))
         assert directives["default-src"] == "'self'"
         assert directives["frame-ancestors"] == "'none'"
         assert directives["form-action"] == "'none'"
-        assert "'unsafe-" not in policy
-        assert set(re.findall(r"'sha256-([^']+)'", directives["script-src"])) == script_receipt
-        assert set(re.findall(r"'sha256-([^']+)'", directives["style-src"])) == style_receipt
+        assert "'unsafe-inline'" not in directives["script-src"]
+        assert "'unsafe-eval'" not in directives["script-src"]
         shell = Shell()
         shell.feed(page.decode())
         shell.close()
-        scripts.update(shell.executable_hashes)
-        styles.update(shell.style_hashes)
+        assert shell.executable_hashes == set(re.findall(r"'sha256-([^']+)'", directives["script-src"]))
+        assert shell.style_hashes == set(re.findall(r"'sha256-([^']+)'", directives["style-src"]))
         references.update(shell.assets)
 
-    assert scripts == script_receipt
-    # The theme switch inserts this exact rule while the document theme changes.
-    styles.add(base64.b64encode(hashlib.sha256(b"*{transition: unset !important;}").digest()).decode())
-    assert styles == style_receipt
     assert references
     for url in references:
-        assert url.startswith("/product/_astro/"), url
-        asset = product_dir / url.removeprefix("/product/")
+        asset = marketing_dir / url.removeprefix("/")
         body, headers = server.request(url)
         assert body == asset.read_bytes(), url
         assert headers["Content-Type"] == ASSET_TYPES[asset.suffix], url
-        assert "immutable" in headers["Cache-Control"], url
         assert headers["X-Content-Type-Options"] == "nosniff", url
+        if url.startswith("/_next/static/"):
+            assert "immutable" in headers["Cache-Control"], url
 
     licenses, headers = server.request("/product/licenses.txt")
-    assert licenses == (product_dir / "licenses.txt").read_bytes()
+    assert licenses == (marketing_dir / "product/licenses.txt").read_bytes()
     assert headers["Content-Type"] == "text/plain; charset=utf-8"
-    server.request("/product/unknown", expected=404)
+    assert server.request("/product/healthz", expected=204)[0] == b""
+    assert server.request("/product/sitemap.xml", expected=308)[1]["Location"] == "/sitemap.xml"
+    sitemap, headers = server.request("/sitemap.xml")
+    assert headers["Content-Type"] == "application/xml; charset=utf-8"
+    assert re.findall(rb"<loc>([^<]+)</loc>", sitemap) == [
+        f"https://ductdelta.com{url}".encode() for url in pages
+    ]
+    assert b"https://ductdelta.com/sitemap.xml" in server.request("/robots.txt")[0]
+    assert server.request("/?utm_source=release")[0] == server.request("/")[0]
+    page, headers = server.request("/product/unknown", expected=404)
+    assert headers["X-Robots-Tag"] == "noindex, follow"
+    assert b"This page moved or no longer exists" in page
+    server.request("/_next/static/unknown.js", expected=404)
     server.request("/product/_astro/unknown.js", expected=404)
     server.request("/product/_astro/%2e%2e/index.html", expected=404)
     server.request("/product/script-hashes.txt", expected=404)
-    server.request("/product/style-hashes.txt", expected=404)
-    print("PASS: four public pages, same-origin workspace links, typed assets and separate content policy")
+    server.request("/product/faq/index.html.csp", expected=404)
+    print("PASS: marketing pages, old links, canonical URLs, script hashes and typed assets")
 
 
 if __name__ == "__main__":

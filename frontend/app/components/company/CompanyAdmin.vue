@@ -126,7 +126,7 @@ function invite() {
       name,
       role
     }))
-    inviteLink.value = { id: result.id, url: location.origin + '/#invite=' + result.token, expiresAt: result.expires_at }
+    inviteLink.value = { id: result.id, url: location.origin + '/workspace/#invite=' + result.token, expiresAt: result.expires_at }
     inviteName.value = ''
     copied.value = ''
   })

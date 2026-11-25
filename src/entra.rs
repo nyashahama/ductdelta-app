@@ -346,9 +346,9 @@ async fn callback(
 ) -> Response {
     let result = complete(&workspace, &headers, input).await;
     let mut response = if result.is_ok() {
-        Redirect::to("/").into_response()
+        Redirect::to("/workspace/").into_response()
     } else {
-        Redirect::to("/?view=security&sso_error=1").into_response()
+        Redirect::to("/workspace/?view=security&sso_error=1").into_response()
     };
     let headers = response.headers_mut();
     headers.insert(

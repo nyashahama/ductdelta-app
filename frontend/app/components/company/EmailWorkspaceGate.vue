@@ -125,7 +125,7 @@ watch(() => props.invitation, () => changeMode('sign_in'))
 
 function backToSignIn() {
   changeMode('sign_in')
-  if (props.recovery) void navigateTo({ path: '/', query: { view: 'security' } })
+  if (props.recovery) void navigateTo({ path: '/workspace/', query: { view: 'security' } })
 }
 
 async function submit() {
@@ -179,8 +179,8 @@ async function submit() {
       code.value = ''
     }
     await refreshSession()
-    if (intent === 'company') await navigateTo({ path: '/', query: { view: 'company' } }, { replace: true })
-    if (intent === 'recover') await navigateTo({ path: '/', query: { view: 'security' } }, { replace: true })
+    if (intent === 'company') await navigateTo({ path: '/workspace/', query: { view: 'company' } }, { replace: true })
+    if (intent === 'recover') await navigateTo({ path: '/workspace/', query: { view: 'security' } }, { replace: true })
     if (invitation === props.invitation) emit('done')
   } catch (cause) {
     if (props.invitation && cause instanceof ApiError && cause.status === 404) {
@@ -436,7 +436,7 @@ async function submit() {
                 color="neutral"
                 variant="link"
                 class="px-0 text-muted"
-                to="/product/"
+                to="/"
                 external
               />
             </div>

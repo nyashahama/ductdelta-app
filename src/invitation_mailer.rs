@@ -149,7 +149,7 @@ impl InvitationMailer {
             "{} invited you to join their DuctDelta workspace.",
             delivery.company_name
         );
-        let url = format!("{}/#invite={token}", delivery.origin);
+        let url = format!("{}/workspace/#invite={token}", delivery.origin);
         let detail = "Use the invitation once before it expires. If you did not expect it, ignore this message.";
         let text = format!("{description}\n\n{url}\n\n{detail}");
         self.send(

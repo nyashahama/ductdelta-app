@@ -20,7 +20,7 @@ The workspace uses the [Nuxt UI Dashboard template](https://github.com/nuxt-ui-t
 
 ## Public product page
 
-The production build serves the ScrewFast marketing pages at `/product/`, with separate workflow, worked example and FAQ pages. The workspace and existing invitation links open at `/`. Signed-out visitors can reach the product pages through **About DuctDelta**. [Marketing source and release checks](docs/marketing.md)
+The public landing page opens at `/`. Use **Open workspace** to sign in at `/workspace/`. Previously shared invitations and project links still reach the workspace. [Marketing source and release checks](docs/marketing.md)
 
 After building the frontend, run `python3 scripts/check_frontend.py` to verify the routes, local assets, content security policies and protected workspace API against the local Rust server.
 

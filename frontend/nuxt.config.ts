@@ -16,6 +16,7 @@ export default defineNuxtConfig({
   },
   experimental: { appManifest: false, payloadExtraction: false },
   compatibilityDate: '2026-06-30',
+  nitro: { prerender: { routes: ['/workspace/'] } },
   eslint: { config: { stylistic: { commaDangle: 'never', braceStyle: '1tbs' } } },
   icon: {
     mode: 'svg',

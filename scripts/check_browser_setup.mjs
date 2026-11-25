@@ -12,21 +12,6 @@ const link = (page, name) => page.getByRole('link', { name, exact: true })
 const checkWidth = async (page) => assert.ok(await page.evaluate(
   () => document.documentElement.scrollWidth <= innerWidth
 ))
-const productTheme = (page) => page.evaluate(() => {
-  const body = getComputedStyle(document.body)
-  return {
-    background: body.backgroundColor,
-    font: body.fontFamily,
-    heading: getComputedStyle(document.querySelector('main h1')).color,
-    surface: getComputedStyle(document.querySelector('header nav')).backgroundColor
-  }
-})
-const actionColors = (action) => action.evaluate(async element => {
-  await Promise.all(element.getAnimations().map(animation => animation.finished))
-  const style = getComputedStyle(element)
-  return { background: style.backgroundColor, color: style.color }
-})
-
 try {
   const desktop = await browser.newContext({ viewport: { width: 1440, height: 1000 }, colorScheme: 'light' })
   const phoneOptions = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }
@@ -37,70 +22,15 @@ try {
     page.setDefaultTimeout(8000)
     page.on('pageerror', error => errors.push(String(error)))
   }
-  await owner.goto(origin)
+  await owner.goto(origin + '/workspace/')
   await heading(owner, 'Sign in to your workspace').waitFor()
   assert.ok(await owner.locator('html').evaluate(element => element.classList.contains('light')))
-  const workspaceFont = await owner.evaluate(() => getComputedStyle(document.body).fontFamily)
-  const policyErrors = []
-  const recordPolicyError = (message) => {
-    if (message.type() === 'error' && /content security policy/i.test(message.text())) {
-      policyErrors.push(message.text())
-    }
-  }
-  owner.on('console', recordPolicyError)
-  member.on('console', recordPolicyError)
   await link(owner, 'About DuctDelta').click()
-  await heading(owner, 'Keep mechanical changes on record').waitFor()
-  const lightTheme = await productTheme(owner)
-  await owner.getByRole('tab', { name: /record the decision/i }).click()
-  await owner.getByRole('img', { name: /illustrative rectangular ductwork/i }).waitFor()
-  await button(owner, 'Dark Theme Toggle').click()
-  await owner.reload()
-  assert.ok(await owner.locator('html').evaluate(element => element.classList.contains('dark')))
-  const darkTheme = await productTheme(owner)
-  assert.notEqual(darkTheme.background, lightTheme.background)
-  assert.equal(darkTheme.font, workspaceFont)
-  for (const subpath of ['', 'workflow/', 'example/', 'faq/']) {
-    await owner.goto(origin + '/product/' + subpath)
-    assert.deepEqual(await productTheme(owner), darkTheme, 'Consistent dark colors on /product/' + subpath)
-  }
-  await owner.goto(origin + '/product/')
-  assert.ok(await owner.evaluate(async () => {
-    const faces = await document.fonts.load('400 16px "Public Sans"')
-    return faces.some(face => face.status === 'loaded')
-  }), 'Marketing reuses the workspace webfont')
-  const exampleAction = link(owner, 'See a worked example')
-  const darkAction = await actionColors(exampleAction)
-  await exampleAction.hover()
-  const hoverAction = await actionColors(exampleAction)
-  assert.notEqual(hoverAction.background, darkAction.background, 'Primary action has a hover state')
-  await button(owner, 'Light Theme Toggle').click()
-  assert.deepEqual(await productTheme(owner), lightTheme, 'Light mode preserves its palette')
-  assert.deepEqual(await actionColors(exampleAction), darkAction, 'Product primary action stays consistent across themes')
-  await exampleAction.hover()
-  assert.deepEqual(await actionColors(exampleAction), hoverAction, 'Primary action hover matches in both themes')
-  await exampleAction.click()
-  await heading(owner, 'One duct reroute').waitFor()
-  await owner.getByRole('tab', { name: 'Payment balance', exact: true }).click()
-  await heading(owner, 'R17,900.00 still due').waitFor()
+  await heading(owner, 'Every change. Accounted for.').waitFor()
+  assert.equal(new URL(owner.url()).pathname, '/')
   await link(owner, 'Open workspace').first().click()
   await heading(owner, 'Sign in to your workspace').waitFor()
-
-  await member.goto(origin + '/product/faq/')
-  await heading(member, 'Project questions').waitFor()
-  await button(member, 'How do we record a notice?').press('Enter')
-  await member.getByText(/record when the notice was sent and received/i).waitFor()
-  await button(member, 'Can one receipt cover multiple certificates?').click()
-  await member.getByText(/finance can allocate a receipt across certificates/i).waitFor()
-  assert.equal(await button(member, 'How do we record a notice?').getAttribute('aria-expanded'), 'true')
-  await button(member, 'Toggle navigation').click()
-  await member.locator('header').getByRole('link', { name: 'Workflow', exact: true }).click()
-  await heading(member, 'From site observation to closeout').waitFor()
-  await checkWidth(member)
-  member.off('console', recordPolicyError)
-  owner.off('console', recordPolicyError)
-  assert.deepEqual(policyErrors, [])
-  console.log('PASS: product interactions and the workspace transition with the production content policy')
+  assert.equal(new URL(owner.url()).pathname, '/workspace/')
 
   await button(owner, 'Create a company').click({ timeout: 5000 })
   await owner.getByLabel('Company name').fill('Basin Mechanical')
@@ -129,7 +59,7 @@ try {
   await inviteInput.waitFor()
   await accessHistory.getByText('Invitation created', { exact: true }).waitFor()
   const invite = await inviteInput.inputValue()
-  assert.ok(invite.startsWith(origin + '/#invite='))
+  assert.ok(invite.startsWith(origin + '/workspace/#invite='))
   assert.equal(new URL(invite).hash.length, 72, 'The API returns a full token')
   assert.ok(/^[a-f0-9]{64}$/i.test(new URLSearchParams(new URL(invite).hash.slice(1)).get('invite')), 'Invitation token decodes as hex')
   await member.goto(invite)
@@ -152,7 +82,7 @@ try {
   assert.equal(await button(member, 'Sign out all other sessions').count(), 0)
   await checkWidth(member)
   await member.screenshot({ path: 'artifacts/account-sessions-mobile.png', animations: 'disabled' })
-  await member.goto(origin)
+  await member.goto(origin + '/workspace/')
   await button(owner, 'Refresh setup').click()
   await accessHistory.getByText('Invitation accepted', { exact: true }).waitFor()
   await owner.getByRole('listitem').filter({ hasText: 'Sam Site' }).getByRole('button', { name: 'Manage access' }).waitFor()
@@ -171,7 +101,7 @@ try {
   await heading(member, 'Project overview').waitFor()
   await member.getByText('Net certified balance', { exact: true }).waitFor()
   await member.goto(origin + '/product/')
-  await link(member, 'Open DuctDelta').click()
+  await link(member, 'Open workspace').first().click()
   await heading(member, 'Project overview').waitFor()
   await button(member, 'New observation').click()
   await member.getByLabel('Observation', { exact: true }).fill('A beam blocks the duct route.')
@@ -283,7 +213,7 @@ try {
   await owner.keyboard.press('Escape')
   await accessHistory.getByText('Company member removed', { exact: true }).waitFor()
   const newDevice = await browser.newPage()
-  await newDevice.goto(origin)
+  await newDevice.goto(origin + '/workspace/')
   await button(newDevice, 'Recover access').click()
   await newDevice.getByLabel('Recovery key', { exact: true }).fill(recoveryKey)
   await button(newDevice, 'Recover account').click()
@@ -314,7 +244,7 @@ try {
     assert.equal(response.status(), 201)
     await route.abort('failed')
   })
-  await interrupted.goto(origin)
+  await interrupted.goto(origin + '/workspace/')
   await button(interrupted, 'Create a company').click()
   await interrupted.getByLabel('Company name').fill('Interrupted Mechanical')
   await interrupted.getByLabel('Your name').fill('Recovery admin')

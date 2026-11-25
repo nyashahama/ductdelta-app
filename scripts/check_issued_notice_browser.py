@@ -11,7 +11,7 @@ if not os.environ.get("DUCTDELTA_PLAYWRIGHT_MODULE"):
     raise SystemExit("Set DUCTDELTA_PLAYWRIGHT_MODULE to the absolute path to playwright/index.mjs.")
 
 frontend = ROOT / "frontend/.output/public"
-if not (frontend / "index.html").is_file():
+if not (frontend / "workspace/index.html").is_file():
     raise SystemExit("Build the Nuxt frontend before running the browser check.")
 
 with workspace(frontend=frontend) as server:

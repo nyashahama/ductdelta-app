@@ -86,7 +86,7 @@ async function finish() {
   error.value = ''
   try {
     await refreshSession()
-    if (openedCompany.value) await navigateTo({ path: '/', query: { view: 'company' } }, { replace: true })
+    if (openedCompany.value) await navigateTo({ path: '/workspace/', query: { view: 'company' } }, { replace: true })
     if (keys.value) emit('done')
     else emit('joined')
   } catch {
@@ -377,7 +377,7 @@ async function submit() {
             label="About DuctDelta"
             color="neutral"
             variant="link"
-            to="/product/"
+            to="/"
             external
           />
         </div>
